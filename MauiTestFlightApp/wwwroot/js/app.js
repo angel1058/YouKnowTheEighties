@@ -1,16 +1,17 @@
 // ============================================================================
-// SO YOU THINK YOU KNOW 80s MUSIC! - ENHANCED GAME ENGINE
+// SO YOU THINK YOU KNOW 80s MUSIC! - ENHANCED GAME ENGINE V3
 // ============================================================================
 
 let songsMap = {};          // id -> { id, t: title, a: artist, highestPos, weeksInTop10, weeksInTop20, reachedNum1 }
 let artistSongsMap = {};    // artistName -> array of song objects
-let chartWeeks = [];        // array of { dateKey, year, monthName, positions: [songId...] }
+let chartWeeks = [];        // array of { dateKey, year, exactDateFormatted, positions: [songId...] }
 let currentQuestion = null;
 let currentWeek = null;
+let currentChartModalWeekIndex = 0;
 let selectedAnswerIndex = null;
 let answerRevealed = false;
 
-// 10-Second Bonus Countdown Timer State
+// Timer Mode & Bonus Points State
 let bonusTimerInterval = null;
 let bonusSecondsLeft = 10;
 let currentBonusPoints = 5;
@@ -25,6 +26,8 @@ let state = {
     strikes: 0,
     lifelines5050: 3,
     cooldownEndTime: 0,
+    timerModeEnabled: false,
+    tonedDownTheme: false
 };
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", 
@@ -37,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ----------------------------------------------------------------------------
-// 1. DATA PARSING & PRE-COMPUTING ANALYTICS
+// 1. DATA PARSING & EXACT DATE FORMATTING
 // ----------------------------------------------------------------------------
 async function loadChartData() {
     const progressEl = document.getElementById('splash-progress');
@@ -51,7 +54,7 @@ async function loadChartData() {
         const data = await response.json();
 
         if (progressEl) progressEl.style.width = '55%';
-        if (statusEl) statusEl.textContent = 'Pre-computing 80s Song Statistics & Peaks...';
+        if (statusEl) statusEl.textContent = 'Pre-computing 80s Song Statistics & Exact Dates...';
 
         // Initialize Songs
         data.songs.forEach(song => {
@@ -70,25 +73,24 @@ async function loadChartData() {
             artistSongsMap[artistKey].push(songsMap[song.id]);
         });
 
-        // Parse & Compute Chart Statistics (1980 - 1989)
+        // Parse & Compute Exact Dates (1980 - 1989)
         const dateKeys = Object.keys(data.charts).sort();
         dateKeys.forEach(dateKey => {
             const year = parseInt(dateKey.substring(0, 4));
             if (year >= 1980 && year <= 1989) {
-                const month = parseInt(dateKey.substring(4, 6)) - 1;
-                const monthName = MONTH_NAMES[month] || '';
+                const exactDateFormatted = formatExactChartDate(dateKey);
                 const positions = data.charts[dateKey];
 
                 chartWeeks.push({
                     dateKey: dateKey,
                     year: year,
-                    monthName: `${monthName} ${year}`,
+                    exactDateFormatted: exactDateFormatted,
                     positions: positions
                 });
 
-                // Compute stats for each song in this week
+                // Compute stats for each song
                 positions.forEach((songId, idx) => {
-                    const posNum = idx + 1; // 1 to 20
+                    const posNum = idx + 1;
                     const s = songsMap[songId];
                     if (s) {
                         if (posNum < s.highestPos) s.highestPos = posNum;
@@ -105,6 +107,7 @@ async function loadChartData() {
 
         setTimeout(() => {
             document.getElementById('splash-screen').classList.add('hidden');
+            applyTheme();
             updateUserUI();
             checkCooldownState();
             generateNextQuestion();
@@ -117,6 +120,28 @@ async function loadChartData() {
         setTimeout(() => {
             document.getElementById('splash-screen').classList.add('hidden');
         }, 1500);
+    }
+}
+
+// Helper: Format exact YYYYMMDD date to "July 18th, 1984"
+function formatExactChartDate(dateKey) {
+    const year = dateKey.substring(0, 4);
+    const month = parseInt(dateKey.substring(4, 6)) - 1;
+    const day = parseInt(dateKey.substring(6, 8));
+
+    const monthName = MONTH_NAMES[month] || '';
+    const ordinal = getOrdinalSuffix(day);
+
+    return `${monthName} ${day}${ordinal}, ${year}`;
+}
+
+function getOrdinalSuffix(d) {
+    if (d > 3 && d < 21) return 'th';
+    switch (d % 10) {
+        case 1:  return "st";
+        case 2:  return "nd";
+        case 3:  return "rd";
+        default: return "th";
     }
 }
 
@@ -148,6 +173,7 @@ function generateNextQuestion() {
     // Pick random week
     const weekIndex = Math.floor(Math.random() * chartWeeks.length);
     currentWeek = chartWeeks[weekIndex];
+    currentChartModalWeekIndex = weekIndex;
 
     const level = state.currentLevel;
     const typeRoll = Math.random();
@@ -166,26 +192,30 @@ function generateNextQuestion() {
     }
 
     renderQuestionUI();
-    startBonusTimer();
+
+    if (state.timerModeEnabled) {
+        startBonusTimer();
+    } else {
+        document.getElementById('bonus-timer-box').classList.add('hidden');
+    }
 }
 
-// Level 1: "Who sang..." (Top 2 Hits) with Artist-Specific Distractor Engine
+// Level 1: "Who sang..." (Artist-Specific Questions)
 function generateLevel1Question(week, weekIndex) {
-    const pos = Math.floor(Math.random() * 2); // #0 or #1
+    const pos = Math.floor(Math.random() * 2);
     const songId = week.positions[pos];
     const targetSong = songsMap[songId];
 
-    const questionText = `Who sang "${targetSong.t}" when it hit the Top 2 in ${week.monthName}?`;
+    const questionText = `Who sang "${targetSong.t}" when it hit the Top 2 on ${week.exactDateFormatted}?`;
     const correctAnswer = targetSong.a;
 
-    // Distractor Generation: Try artist-specific distractors first, then chart neighbors
     const distractors = getSmartArtistDistractors(targetSong.a, week, pos);
-
     const options = assembleFourOptions(correctAnswer, distractors);
 
     currentQuestion = {
         level: 1,
-        points: 1,
+        basePoints: 1,
+        artistNamed: false,
         category: 'LEVEL 1: TOP 2 HITS',
         text: questionText,
         options: options.shuffled,
@@ -193,32 +223,40 @@ function generateLevel1Question(week, weekIndex) {
     };
 }
 
-// Level 2: "Which song held [Artist]'s '[Song]' off top spot?" (Format: "Song Title" - Artist Name)
+// Level 2: "Which song did [Artist] get to Number 1 with on [Exact Date]?" (Song Titles ONLY when artist is named!)
 function generateLevel2Question(week, weekIndex) {
     const num1Song = songsMap[week.positions[0]];
     const num2Song = songsMap[week.positions[1]];
 
     let questionText = '';
     let correctAnswer = '';
+    let artistNamed = true;
     const distractors = new Set();
 
     if (Math.random() > 0.5 && num1Song && num2Song) {
-        // "Which song held [Artist B]'s '[Song B]' off of top spot in [Month Year]?"
-        questionText = `Which song held ${num2Song.a}'s "${num2Song.t}" off top spot in ${week.monthName}?`;
-        correctAnswer = `"${num1Song.t}" - ${num1Song.a}`;
+        // Artist IS named in prompt -> Answer options are SONG TITLES ONLY!
+        questionText = `Which song did ${num1Song.a} get to Number 1 with on ${week.exactDateFormatted}?`;
+        correctAnswer = num1Song.t;
+        artistNamed = true;
 
-        [2, 3, 4, 5].forEach(p => {
-            if (week.positions[p]) {
-                const s = songsMap[week.positions[p]];
-                distractors.add(`"${s.t}" - ${s.a}`);
-            }
+        // Try to get other songs by the exact same artist (e.g. Sonia, Madonna)!
+        const artistKey = num1Song.a.trim().toUpperCase();
+        const sameArtistSongs = artistSongsMap[artistKey] || [];
+        sameArtistSongs.forEach(s => {
+            if (s.t !== correctAnswer) distractors.add(s.t);
+        });
+
+        // Fill remaining distractors with songs from same week
+        [1, 2, 3, 4].forEach(p => {
+            if (week.positions[p]) distractors.add(songsMap[week.positions[p]].t);
         });
     } else {
-        // "What song did [Artist] get to Number 1 with in [Month Year]?"
-        questionText = `What song did ${num1Song.a} get to Number 1 with in ${week.monthName}?`;
-        correctAnswer = `"${num1Song.t}" - ${num1Song.a}`;
+        // Artist NOT named in prompt -> Format as "Song Title" - Artist Name
+        questionText = `Which song was held off top spot at Number 2 on ${week.exactDateFormatted}?`;
+        correctAnswer = `"${num2Song.t}" - ${num2Song.a}`;
+        artistNamed = false;
 
-        [1, 2, 3, 4].forEach(p => {
+        [0, 2, 3, 4].forEach(p => {
             if (week.positions[p]) {
                 const s = songsMap[week.positions[p]];
                 distractors.add(`"${s.t}" - ${s.a}`);
@@ -230,7 +268,8 @@ function generateLevel2Question(week, weekIndex) {
 
     currentQuestion = {
         level: 2,
-        points: 2,
+        basePoints: 2,
+        artistNamed: artistNamed,
         category: 'LEVEL 2: NUMBER 1 HITS',
         text: questionText,
         options: options.shuffled,
@@ -244,7 +283,7 @@ function generateLevel3Question(week, weekIndex) {
     const songId = week.positions[pos];
     const targetSong = songsMap[songId];
 
-    const questionText = `Who sang "${targetSong.t}" when it reached Number ${pos + 1} in ${week.monthName}?`;
+    const questionText = `Who sang "${targetSong.t}" when it reached Number ${pos + 1} on ${week.exactDateFormatted}?`;
     const correctAnswer = targetSong.a;
 
     const distractors = getSmartArtistDistractors(targetSong.a, week, pos);
@@ -252,7 +291,8 @@ function generateLevel3Question(week, weekIndex) {
 
     currentQuestion = {
         level: 3,
-        points: 3,
+        basePoints: 3,
+        artistNamed: false,
         category: `LEVEL 3: TOP 10 DEEP-DIVE (NUMBER ${pos + 1})`,
         text: questionText,
         options: options.shuffled,
@@ -260,7 +300,7 @@ function generateLevel3Question(week, weekIndex) {
     };
 }
 
-// Level 3 Peak Question: "What was the highest position reached by '[Song]' by [Artist]?"
+// Level 3 Peak Question
 function generateHighestPeakQuestion() {
     const randomSongId = Math.floor(Math.random() * Object.keys(songsMap).length) + 1;
     const targetSong = songsMap[randomSongId];
@@ -280,7 +320,8 @@ function generateHighestPeakQuestion() {
 
     currentQuestion = {
         level: 3,
-        points: 3,
+        basePoints: 3,
+        artistNamed: true,
         category: 'LEVEL 3: HIGHEST PEAK POSITION',
         text: questionText,
         options: options.shuffled,
@@ -288,9 +329,8 @@ function generateHighestPeakQuestion() {
     };
 }
 
-// Level 4: "Which song NEVER got to Number 1?"
+// Level 4: Never Number 1 Question
 function generateNeverNumberOneQuestion() {
-    // Find 3 songs that hit #1, and 1 classic song that hit peak #2 or #3
     const num1Songs = Object.values(songsMap).filter(s => s.reachedNum1);
     const neverNum1Songs = Object.values(songsMap).filter(s => !s.reachedNum1 && s.highestPos <= 3);
 
@@ -310,7 +350,8 @@ function generateNeverNumberOneQuestion() {
 
     currentQuestion = {
         level: 4,
-        points: 4,
+        basePoints: 4,
+        artistNamed: false,
         category: 'LEVEL 4: NEVER NUMBER 1?',
         text: questionText,
         options: options.shuffled,
@@ -318,7 +359,7 @@ function generateNeverNumberOneQuestion() {
     };
 }
 
-// Level 4: "How many weeks did '[Song]' stay in the Top 10?"
+// Level 4: Weeks in Top 10 Question
 function generateWeeksInTop10Question() {
     const songsWithWeeks = Object.values(songsMap).filter(s => s.weeksInTop10 >= 3);
     const targetSong = songsWithWeeks[Math.floor(Math.random() * songsWithWeeks.length)];
@@ -338,7 +379,8 @@ function generateWeeksInTop10Question() {
 
     currentQuestion = {
         level: 4,
-        points: 4,
+        basePoints: 4,
+        artistNamed: true,
         category: 'LEVEL 4: WEEKS IN TOP 10',
         text: questionText,
         options: options.shuffled,
@@ -346,12 +388,12 @@ function generateWeeksInTop10Question() {
     };
 }
 
-// Level 4: Advanced Chart Showdowns
+// Level 4: Advanced Chart Showdown
 function generateLevel4Question(week, weekIndex) {
     const num1Song = songsMap[week.positions[0]];
     const num2Song = songsMap[week.positions[1]];
 
-    const questionText = `Who did ${num1Song.a} knock off top spot in ${week.monthName} with "${num1Song.t}"?`;
+    const questionText = `Who did ${num1Song.a} knock off top spot on ${week.exactDateFormatted} with "${num1Song.t}"?`;
     const correctAnswer = `"${num2Song.t}" - ${num2Song.a}`;
 
     const distractors = new Set();
@@ -366,7 +408,8 @@ function generateLevel4Question(week, weekIndex) {
 
     currentQuestion = {
         level: 4,
-        points: 4,
+        basePoints: 4,
+        artistNamed: false,
         category: 'LEVEL 4: CHART SHOWDOWN',
         text: questionText,
         options: options.shuffled,
@@ -374,20 +417,18 @@ function generateLevel4Question(week, weekIndex) {
     };
 }
 
-// Smart Distractors (Prefers other tracks by the exact same artist!)
+// Smart Distractors Generator
 function getSmartArtistDistractors(artistName, week, targetPos) {
     const distractors = new Set();
     const artistKey = artistName.trim().toUpperCase();
     const sameArtistSongs = artistSongsMap[artistKey] || [];
 
-    // If asking about a famous artist (e.g. Kylie Minogue, Madonna, Queen), offer other tracks by same artist!
     if (sameArtistSongs.length >= 2) {
         sameArtistSongs.forEach(s => {
             if (s.a !== artistName) distractors.add(s.a);
         });
     }
 
-    // Fill remaining distractors from chart neighbors
     [1, 2, 3, 4, 5, 6].forEach(p => {
         if (p !== targetPos && week.positions[p]) {
             const a = songsMap[week.positions[p]].a;
@@ -422,8 +463,38 @@ function assembleFourOptions(correct, distractorsList) {
 }
 
 // ----------------------------------------------------------------------------
-// 3. 10-SECOND BONUS TIMER
+// 3. TIMER MODE TOGGLE & BONUS TIMER
 // ----------------------------------------------------------------------------
+function toggleTimerMode() {
+    state.timerModeEnabled = !state.timerModeEnabled;
+    saveLocalState();
+
+    const statusEl = document.getElementById('timer-toggle-status');
+    const btnToggle = document.getElementById('btn-timer-toggle');
+    const bonusBox = document.getElementById('bonus-timer-box');
+
+    if (state.timerModeEnabled) {
+        statusEl.textContent = 'ON (2x Pts)';
+        btnToggle.classList.add('active');
+        bonusBox.classList.remove('hidden');
+        startBonusTimer();
+    } else {
+        statusEl.textContent = 'OFF';
+        btnToggle.classList.remove('active');
+        bonusBox.classList.add('hidden');
+        stopBonusTimer();
+    }
+
+    updateQuestionPointsDisplay();
+}
+
+function updateQuestionPointsDisplay() {
+    if (!currentQuestion) return;
+    const multiplier = state.timerModeEnabled ? 2 : 1;
+    const finalPts = currentQuestion.basePoints * multiplier;
+    document.getElementById('question-points').textContent = `+${finalPts} PT${finalPts > 1 ? 'S' : ''}${state.timerModeEnabled ? ' (2x TIMER)' : ''}`;
+}
+
 function startBonusTimer() {
     stopBonusTimer();
     bonusSecondsLeft = 10;
@@ -459,7 +530,7 @@ function updateTimerUI() {
 }
 
 // ----------------------------------------------------------------------------
-// 4. 50/50 LIFELINE GIMMICK
+// 4. 50/50 LIFELINE
 // ----------------------------------------------------------------------------
 function useLifeline5050() {
     if (state.lifelines5050 <= 0 || !currentQuestion || selectedAnswerIndex !== null) return;
@@ -468,12 +539,9 @@ function useLifeline5050() {
     document.getElementById('count-5050').textContent = state.lifelines5050;
     document.getElementById('btn-5050').disabled = true;
 
-    // Eliminate 2 wrong answers
     const wrongIndices = [0, 1, 2, 3].filter(idx => idx !== currentQuestion.correctIndex);
-    // Shuffle wrong indices
     wrongIndices.sort(() => Math.random() - 0.5);
 
-    // Disable first 2 wrong options
     wrongIndices.slice(0, 2).forEach(idx => {
         const btn = document.getElementById(`btn-ans-${idx}`);
         btn.disabled = true;
@@ -490,7 +558,7 @@ function renderQuestionUI() {
     if (!currentQuestion) return;
 
     document.getElementById('question-category').textContent = currentQuestion.category;
-    document.getElementById('question-points').textContent = `+${currentQuestion.points} PT${currentQuestion.points > 1 ? 'S' : ''}`;
+    updateQuestionPointsDisplay();
     document.getElementById('question-text').textContent = currentQuestion.text;
 
     currentQuestion.options.forEach((opt, idx) => {
@@ -511,23 +579,26 @@ function submitAnswer(selectedIndex) {
     const btnReveal = document.getElementById('btn-reveal-answer');
     const btnChart = document.getElementById('btn-view-chart');
 
-    // Disable all buttons
     for (let i = 0; i < 4; i++) {
         const btn = document.getElementById(`btn-ans-${i}`);
         btn.disabled = true;
     }
 
+    const multiplier = state.timerModeEnabled ? 2 : 1;
+    const basePtsEarned = currentQuestion.basePoints * multiplier;
+
     if (isCorrect) {
-        const totalPointsEarned = currentQuestion.points + currentBonusPoints;
+        const bonusPtsEarned = state.timerModeEnabled ? currentBonusPoints : 0;
+        const totalPointsEarned = basePtsEarned + bonusPtsEarned;
         state.score += totalPointsEarned;
 
-        // Highlight correct button
         document.getElementById(`btn-ans-${selectedIndex}`).classList.add('correct');
 
         feedbackBanner.className = 'feedback-banner correct-banner';
         feedbackIcon.textContent = '🎉';
-        feedbackText.textContent = `CORRECT! +${currentQuestion.points} PT${currentBonusPoints > 0 ? ` (+${currentBonusPoints} BONUS)` : ''}!`;
+        feedbackText.textContent = `CORRECT! +${basePtsEarned} PT${bonusPtsEarned > 0 ? ` (+${bonusPtsEarned} TIMER BONUS)` : ''}!`;
 
+        // Hide "Reveal Answer" on correct guess! Show "View Chart"
         btnReveal.classList.add('hidden');
         btnChart.classList.remove('hidden');
 
@@ -535,14 +606,13 @@ function submitAnswer(selectedIndex) {
     } else {
         state.strikes++;
 
-        // Highlight wrong button
         document.getElementById(`btn-ans-${selectedIndex}`).classList.add('wrong');
 
         feedbackBanner.className = 'feedback-banner wrong-banner';
         feedbackIcon.textContent = '❌';
         feedbackText.textContent = `NOT QUITE RIGHT! Strike ${state.strikes} of 5.`;
 
-        // Hide answer by default - allow user to click "Reveal Answer"
+        // SHOW "Reveal Answer" ONLY on incorrect guess! Hide "View Chart" until revealed
         btnReveal.classList.remove('hidden');
         btnChart.classList.add('hidden');
 
@@ -560,7 +630,6 @@ function revealCorrectAnswer() {
     if (!currentQuestion || answerRevealed) return;
     answerRevealed = true;
 
-    // Highlight correct button
     document.getElementById(`btn-ans-${currentQuestion.correctIndex}`).classList.add('correct');
     
     document.getElementById('feedback-text').textContent = `Correct Answer: "${currentQuestion.options[currentQuestion.correctIndex]}"`;
@@ -569,21 +638,42 @@ function revealCorrectAnswer() {
 }
 
 // ----------------------------------------------------------------------------
-// 6. FULL TOP 20 CHART MODAL
+// 6. TOP 5 CHART VIEW MODAL & WEEK NAVIGATION (PREV/NEXT)
 // ----------------------------------------------------------------------------
 function openWeekChartModal() {
-    if (!currentWeek) return;
+    if (chartWeeks.length === 0) return;
+    renderChartModalWeek(currentChartModalWeekIndex);
+    document.getElementById('modal-chart').classList.remove('hidden');
+}
 
-    document.getElementById('chart-modal-title').textContent = `UK Top 20 - ${currentWeek.monthName}`;
+function navigateChartWeek(dir) {
+    let nextIndex = currentChartModalWeekIndex + dir;
+    if (nextIndex < 0) nextIndex = 0;
+    if (nextIndex >= chartWeeks.length) nextIndex = chartWeeks.length - 1;
+
+    currentChartModalWeekIndex = nextIndex;
+    renderChartModalWeek(nextIndex);
+}
+
+function renderChartModalWeek(idx) {
+    const week = chartWeeks[idx];
+    if (!week) return;
+
+    document.getElementById('chart-modal-title').textContent = `UK Official Chart - ${week.exactDateFormatted}`;
+    document.getElementById('chart-week-index-text').textContent = `Week ${idx + 1} of ${chartWeeks.length}`;
+
     const listEl = document.getElementById('chart-modal-list');
 
-    listEl.innerHTML = currentWeek.positions.map((songId, idx) => {
+    // Free Tier: Render positions #1 through #5 ONLY!
+    const top5Positions = week.positions.slice(0, 5);
+
+    listEl.innerHTML = top5Positions.map((songId, posIdx) => {
         const song = songsMap[songId];
         const isHighlighted = (currentQuestion && (currentQuestion.options[currentQuestion.correctIndex].includes(song.t) || currentQuestion.options[currentQuestion.correctIndex].includes(song.a)));
 
         return `
             <div class="chart-row ${isHighlighted ? 'highlight' : ''}">
-                <div class="chart-pos">#${idx + 1}</div>
+                <div class="chart-pos">#${posIdx + 1}</div>
                 <div class="chart-song-info">
                     <div class="chart-title">${song.t}</div>
                     <div class="chart-artist">${song.a}</div>
@@ -591,15 +681,34 @@ function openWeekChartModal() {
             </div>
         `;
     }).join('');
-
-    document.getElementById('modal-chart').classList.remove('hidden');
 }
 
 function closeWeekChartModal() {
     document.getElementById('modal-chart').classList.add('hidden');
 }
 
-// Level Unlocks Logic
+// ----------------------------------------------------------------------------
+// 7. VISUAL THEME & LEVEL UNLOCKS
+// ----------------------------------------------------------------------------
+function toggleVisualTheme() {
+    state.tonedDownTheme = !state.tonedDownTheme;
+    saveLocalState();
+    applyTheme();
+}
+
+function applyTheme() {
+    const body = document.getElementById('app-body');
+    const btnText = document.getElementById('theme-btn-text');
+
+    if (state.tonedDownTheme) {
+        body.classList.add('theme-toned-down');
+        btnText.textContent = '⚡ Neon Theme';
+    } else {
+        body.classList.remove('theme-toned-down');
+        btnText.textContent = '🎨 Toned-Down';
+    }
+}
+
 function checkLevelUnlocks() {
     let newlyUnlocked = state.unlockedLevel;
 
@@ -622,9 +731,7 @@ function selectLevel(lvl) {
     generateNextQuestion();
 }
 
-// ----------------------------------------------------------------------------
-// 7. PENALTY & COOL-DOWN SYSTEM
-// ----------------------------------------------------------------------------
+// Penalty & Cool-down System
 let timerInterval = null;
 
 function startCooldownPenalty() {
@@ -688,9 +795,7 @@ function skipCooldown() {
     generateNextQuestion();
 }
 
-// ----------------------------------------------------------------------------
-// 8. NAVIGATION & USER PROFILE
-// ----------------------------------------------------------------------------
+// Navigation & Profile
 function showScreen(screenId) {
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.screen-view').forEach(sc => sc.classList.remove('active'));
@@ -709,6 +814,20 @@ function updateUserUI() {
     document.getElementById('score-display').textContent = state.score;
     document.getElementById('level-display').textContent = `Lvl ${state.currentLevel}`;
     document.getElementById('count-5050').textContent = state.lifelines5050;
+
+    const timerStatus = document.getElementById('timer-toggle-status');
+    const btnTimerToggle = document.getElementById('btn-timer-toggle');
+    const bonusBox = document.getElementById('bonus-timer-box');
+
+    if (state.timerModeEnabled) {
+        if (timerStatus) timerStatus.textContent = 'ON (2x Pts)';
+        if (btnTimerToggle) btnTimerToggle.classList.add('active');
+        if (bonusBox) bonusBox.classList.remove('hidden');
+    } else {
+        if (timerStatus) timerStatus.textContent = 'OFF';
+        if (btnTimerToggle) btnTimerToggle.classList.remove('active');
+        if (bonusBox) bonusBox.classList.add('hidden');
+    }
 
     const dots = document.querySelectorAll('.strike-dot');
     dots.forEach((dot, idx) => {
@@ -748,13 +867,12 @@ function getLevelName(lvl) {
     }
 }
 
-// Persistence & Leaderboard
 function saveLocalState() {
-    localStorage.setItem('80s_quiz_state_v2', JSON.stringify(state));
+    localStorage.setItem('80s_quiz_state_v3', JSON.stringify(state));
 }
 
 function loadLocalState() {
-    const saved = localStorage.getItem('80s_quiz_state_v2');
+    const saved = localStorage.getItem('80s_quiz_state_v3');
     if (saved) {
         try {
             state = { ...state, ...JSON.parse(saved) };
@@ -819,6 +937,9 @@ function showPaywallModal(type) {
     if (type === 'level5') {
         title.textContent = 'Unlock Level 5: Lyrics & Trivia Pack!';
         desc.textContent = 'Get access to lyric challenges, band histories, and album trivia!';
+    } else if (type === 'chart') {
+        title.textContent = 'Unlock Full Top 20 Weekly Chart Archives!';
+        desc.textContent = 'Access positions #6 through #20 for all 522 chart weeks of the 1980s!';
     } else {
         title.textContent = 'Unlock 90s & 00s Music Charts!';
         desc.textContent = 'Expand your quiz beyond the 80s with thousands of Top 20 hits from 1990 to 2009!';
