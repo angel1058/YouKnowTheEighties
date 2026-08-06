@@ -220,12 +220,32 @@
                     <span class="level-status" id="level-status-4">REQ: 30 PTS</span>
                 </div>
 
-                <!-- Level 5 (Paywall) -->
-                <div class="level-card locked-paywall" onclick="showPaywallModal('level5')">
+                <!-- Level 5 -->
+                <div class="level-card" id="level-card-5" onclick="selectLevel(5)">
                     <div class="level-badge">LEVEL 5</div>
                     <div class="level-info">
-                        <h3>Lyrics &amp; Band Member Trivia 🔒</h3>
-                        <p>Exclusive bonus pack with lyric challenges &amp; band history</p>
+                        <h3>Genres &amp; Lead Singer Trivia</h3>
+                        <p>Identify synth-pop toppers &amp; lead singers waiting at #2 (+5 Pts)</p>
+                    </div>
+                    <span class="level-status" id="level-status-5">REQ: 50 PTS</span>
+                </div>
+
+                <!-- Level 6 -->
+                <div class="level-card" id="level-card-6" onclick="selectLevel(6)">
+                    <div class="level-badge">LEVEL 6</div>
+                    <div class="level-info">
+                        <h3>Band Lineups &amp; Member Departures</h3>
+                        <p>Who was in which band on exact dates? Who left in 1983? (+6 Pts)</p>
+                    </div>
+                    <span class="level-status" id="level-status-6">REQ: 75 PTS</span>
+                </div>
+
+                <!-- Level 7 (Paywall) -->
+                <div class="level-card locked-paywall" onclick="showPaywallModal('level7')">
+                    <div class="level-badge">LEVEL 7</div>
+                    <div class="level-info">
+                        <h3>Lyrics &amp; Album Trivia 🔒</h3>
+                        <p>Exclusive bonus pack with lyric challenges &amp; album history</p>
                     </div>
                     <span class="level-status paywall-tag">UNLOCK $1.99</span>
                 </div>
@@ -264,7 +284,7 @@
         </main>
 
         <!-- ===================================================================
-             MODAL 1: FULL TOP 20 CHART VIEW (WITH PREV/NEXT WEEK NAV & PAYWALL)
+             MODAL 1: FULL TOP 20 CHART VIEW
              =================================================================== -->
         <div id="modal-chart" class="modal-overlay hidden">
             <div class="modal-card chart-modal-card">
@@ -272,7 +292,7 @@
                     <span class="neon-tag">UK OFFICIAL CHART ARCHIVE</span>
                     <h2 id="chart-modal-title">July 18th, 1984</h2>
                     
-                    <!-- Week Navigation Buttons (◄ Prev Week / Next Week ►) -->
+                    <!-- Week Navigation Buttons -->
                     <div class="chart-nav-bar">
                         <button class="btn-chart-nav" onclick="navigateChartWeek(-1)">◄ Prev Week</button>
                         <span class="chart-week-counter" id="chart-week-index-text">Week 236 of 522</span>
@@ -337,7 +357,7 @@
                     <div class="feature-item">✔ 1990 - 1999 UK Top 20 Charts Pack</div>
                     <div class="feature-item">✔ 2000 - 2009 UK Top 20 Charts Pack</div>
                     <div class="feature-item">✔ Full Top 6-20 Weekly Chart Archives</div>
-                    <div class="feature-item">✔ Level 5 Lyrics &amp; Band Member Trivia</div>
+                    <div class="feature-item">✔ Level 7 Lyrics &amp; Album Trivia</div>
                     <div class="feature-item">✔ Ad-Free &amp; Unlimited Lives</div>
                 </div>
 
@@ -350,7 +370,7 @@
                     </button>
                 </div>
             </div>
-        </div>
+        </main>
 
         <!-- ===================================================================
              MODAL 4: EDIT PLAYER NAME
