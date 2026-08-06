@@ -1,0 +1,3149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bit Overflow Engine</title>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: #111827;
+            --panel-border: #1f293d;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --accent-yellow: #f59e0b;
+            --text-main: #e2e8f0;
+            --text-muted: #64748b;
+            --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            padding: 16px;
+            gap: 16px;
+        }
+
+        /* TOP REGION & APP HEADER */
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 10px 16px;
+        }
+
+        .app-title {
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .settings-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .select-input {
+            background: #1e293b;
+            border: 1px solid var(--panel-border);
+            color: var(--text-main);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .select-input:focus {
+            border-color: var(--accent-blue);
+        }
+
+        /* REGISTER REGION */
+        .top-region {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .section-header {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* 65-BIT REGISTER DISPLAY */
+        .bit-container {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            padding: 8px 0;
+            scrollbar-width: thin;
+        }
+
+        .byte-group {
+            display: flex;
+            gap: 2px;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 4px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .bit {
+            width: 18px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            background: #1e293b;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease, background-color 0.08s ease;
+            cursor: pointer;
+        }
+
+        .bit:hover {
+            filter: brightness(1.4);
+            z-index: 10;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.9) !important;
+            border-color: #38bdf8 !important;
+        }
+
+        .bit.active {
+            background-color: hsl(var(--bit-hue, 188), 84%, 42%);
+            border-color: hsl(var(--bit-hue, 188), 84%, 55%);
+            box-shadow: 0 0 10px hsla(var(--bit-hue, 188), 84%, 45%, 0.7);
+        }
+
+        .bit.flicker-blur {
+            background: rgba(16, 185, 129, 0.6);
+            border-color: rgba(16, 185, 129, 0.8);
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+            animation: highFreqGlow 0.15s infinite alternate ease-in-out;
+        }
+
+        @keyframes highFreqGlow {
+            0% {
+                opacity: 0.55;
+            }
+
+            100% {
+                opacity: 0.75;
+            }
+        }
+
+        .bit.unowned {
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px dashed rgba(255, 255, 255, 0.08);
+            box-shadow: none;
+            opacity: 0.35;
+        }
+
+        /* SEGMENTED PROGRESS BAR STYLES */
+        .segmented-bar {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            scrollbar-width: thin;
+            padding-bottom: 4px;
+        }
+
+        .byte-segment-block {
+            flex: 1;
+            min-width: 172px;
+            /* Matches exact width of 8-bit .byte-group container */
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.25s ease;
+        }
+
+        .byte-segment-block.unowned {
+            opacity: 0.35;
+            border-color: rgba(255, 255, 255, 0.08);
+            background: rgba(15, 23, 42, 0.3);
+        }
+
+        .byte-segment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            font-weight: bold;
+            color: var(--text-muted);
+        }
+
+        .byte-segment-bar-bg {
+            height: 10px;
+            background: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin-top: 6px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.6);
+        }
+
+        .byte-segment-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #10b981, #38bdf8);
+            border-radius: 2px;
+            transition: width 0.12s ease-out, background 0.2s ease;
+        }
+
+        /* Flashing celebration effect for completed Byte Segments */
+        .byte-segment-block.segment-completed {
+            border-color: #10b981 !important;
+            background: rgba(16, 185, 129, 0.15) !important;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+            animation: byteSegmentFlash 1.0s infinite alternate ease-in-out;
+        }
+
+        .byte-segment-block.segment-completed .byte-segment-header {
+            color: #10b981 !important;
+        }
+
+        .byte-segment-block.segment-completed .byte-segment-fill {
+            background: linear-gradient(90deg, #10b981, #f59e0b, #38bdf8) !important;
+        }
+
+        /* High-Frequency Auto-Calculate Generator Mode */
+        .byte-segment-block.high-freq-generator {
+            border-color: #38bdf8 !important;
+            background: rgba(56, 189, 248, 0.12) !important;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+        }
+
+        .byte-segment-block.high-freq-generator .byte-segment-header {
+            color: #38bdf8 !important;
+        }
+
+        .byte-segment-block.high-freq-generator .byte-segment-fill {
+            background: linear-gradient(90deg, #38bdf8, #3b82f6, #10b981) !important;
+            animation: highFreqGlow 0.15s infinite alternate ease-in-out;
+        }
+
+        @keyframes byteSegmentFlash {
+            0% {
+                box-shadow: 0 0 4px rgba(16, 185, 129, 0.3);
+                border-color: rgba(16, 185, 129, 0.6);
+            }
+
+            100% {
+                box-shadow: 0 0 14px rgba(16, 185, 129, 0.9);
+                border-color: #10b981;
+            }
+        }
+
+        .bit.overflow {
+            background: var(--accent-red);
+            color: #fff;
+            animation: pulse 1s infinite alternate;
+        }
+
+        .bit {
+            position: relative;
+        }
+
+        .bit .charger-badge {
+            position: absolute;
+            top: -4px;
+            right: -3px;
+            font-size: 0.55rem;
+            color: var(--accent-yellow);
+            text-shadow: 0 0 4px rgba(245, 158, 11, 0.9);
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .bit.charge-green {
+            background: rgba(16, 185, 129, 0.75) !important;
+            border-color: rgba(16, 185, 129, 0.85) !important;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.4) !important;
+        }
+
+        .bit.charge-yellow {
+            background: rgba(217, 119, 6, 0.75) !important;
+            border-color: rgba(217, 119, 6, 0.85) !important;
+            box-shadow: 0 0 8px rgba(217, 119, 6, 0.4) !important;
+        }
+
+        .bit.charge-red {
+            background: rgba(220, 38, 38, 0.75) !important;
+            border-color: rgba(220, 38, 38, 0.85) !important;
+            box-shadow: 0 0 10px rgba(220, 38, 38, 0.5) !important;
+            animation: lowBatteryPulse 0.5s infinite alternate ease-in-out;
+        }
+
+        .stat-value .overheat-tag {
+            font-size: 0.75rem;
+            color: var(--accent-red);
+            font-weight: bold;
+            margin-left: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        @keyframes lowBatteryPulse {
+            0% {
+                opacity: 0.75;
+                transform: scale(0.96);
+            }
+
+            100% {
+                opacity: 1.0;
+                transform: scale(1.02);
+            }
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+            }
+
+            100% {
+                box-shadow: 0 0 12px rgba(239, 68, 68, 0.9);
+            }
+        }
+
+        /* STATS PANEL (PROMINENT CENTER) */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            flex-grow: 1;
+        }
+
+        .stat-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: var(--text-main);
+            margin-top: 4px;
+        }
+
+        .stat-value.highlight {
+            color: var(--accent-green);
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            height: 6px;
+            background: #1e293b;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--accent-blue);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        /* CONTROLS REGION (LOWER HALF) */
+        .bottom-region {
+            height: 200px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 8px;
+            overflow-y: auto;
+        }
+
+        .btn {
+            background: #1e293b;
+            border: 1px solid var(--panel-border);
+            color: var(--text-main);
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.15s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: #334155;
+            border-color: var(--accent-blue);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn-subtext {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+        }
+
+        /* CONSOLIDATED CURRENCY PANEL */
+        .currency-card {
+            grid-column: 1 / -1;
+            background: rgba(17, 24, 39, 0.95);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 12px 16px;
+        }
+
+        .currency-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 6px;
+        }
+
+        .currency-item {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            padding: 10px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .currency-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .currency-value {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: var(--text-main);
+        }
+
+        .currency-value.highlight-cyan {
+            color: #38bdf8;
+        }
+
+        .currency-desc {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+        }
+
+        /* SHOP PANEL */
+        .shop-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .shop-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+
+        .shop-item {
+            background: #1e293b;
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 8px;
+            transition: all 0.15s ease;
+        }
+
+        .shop-item.locked {
+            opacity: 0.4;
+            filter: grayscale(80%);
+        }
+
+        .shop-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .shop-title {
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: var(--text-main);
+        }
+
+        .shop-level {
+            font-size: 0.7rem;
+            color: var(--accent-blue);
+            font-weight: bold;
+        }
+
+        .shop-desc {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            line-height: 1.3;
+        }
+
+        .shop-btn {
+            background: var(--panel-bg);
+            border: 1px solid var(--accent-blue);
+            color: var(--text-main);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s ease;
+        }
+
+        .shop-btn:hover:not(:disabled) {
+            background: #334155;
+            border-color: var(--accent-green);
+        }
+
+        .shop-btn:disabled {
+            opacity: 0.4;
+            border-color: var(--panel-border);
+            cursor: not-allowed;
+        }
+
+        /* RESET FADE ANIMATION */
+        .bit-container.resetting {
+            opacity: 0.2;
+            transition: opacity var(--reset-duration, 5s) linear;
+        }
+
+        .shop-btn.purchase-btn {
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+        }
+
+        .shop-btn.purchase-btn:hover:not(:disabled) {
+            background: rgba(16, 185, 129, 0.2);
+        }
+
+        /* NEON MODAL SYSTEM */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(11, 15, 25, 0.85);
+            backdrop-filter: blur(6px);
+            z-index: 3000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .neon-modal {
+            width: 460px;
+            max-width: calc(100vw - 32px);
+            background: #090d16;
+            border: 1px solid #06b6d4;
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(6, 182, 212, 0.35), 0 15px 35px rgba(0, 0, 0, 0.8);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transform: scale(0.92);
+            transition: transform 0.25s ease;
+        }
+
+        .modal-overlay.open .neon-modal {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            background: rgba(6, 182, 212, 0.15);
+            color: #38bdf8;
+            padding: 12px 16px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(6, 182, 212, 0.3);
+            letter-spacing: 0.5px;
+        }
+
+        .modal-close {
+            cursor: pointer;
+            color: #94a3b8;
+            transition: color 0.15s ease;
+        }
+
+        .modal-close:hover {
+            color: #ef4444;
+        }
+
+        .modal-body {
+            padding: 18px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .modal-text {
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: var(--text-main);
+        }
+
+        .text-cyan {
+            color: #38bdf8;
+        }
+
+        .modal-reward-card {
+            background: rgba(6, 182, 212, 0.08);
+            border: 1px dashed rgba(6, 182, 212, 0.4);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .reward-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .reward-value {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #38bdf8;
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+        }
+
+        .reward-subtext {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        .modal-actions {
+            padding: 12px 20px 18px;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .modal-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .cancel-btn {
+            background: #1e293b;
+            border: 1px solid var(--panel-border);
+            color: var(--text-muted);
+        }
+
+        .cancel-btn:hover {
+            background: #334155;
+            color: var(--text-main);
+        }
+
+        .confirm-btn {
+            background: rgba(6, 182, 212, 0.2);
+            border: 1px solid #06b6d4;
+            color: #38bdf8;
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.3);
+        }
+
+        .confirm-btn:hover {
+            background: rgba(6, 182, 212, 0.35);
+            box-shadow: 0 0 18px rgba(6, 182, 212, 0.6);
+        }
+
+        .dev-toggle-btn {
+            background: rgba(245, 158, 11, 0.15);
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            color: var(--accent-yellow);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .dev-toggle-btn:hover {
+            background: rgba(245, 158, 11, 0.35);
+            border-color: var(--accent-yellow);
+        }
+
+        /* DRAGGABLE & HIDDEN-BY-DEFAULT FLOATING DEV MENU */
+        .dev-panel {
+            position: fixed;
+            top: 70px;
+            right: 24px;
+            width: 380px;
+            max-width: calc(100vw - 48px);
+            background: #0f172a;
+            border: 1px solid var(--accent-yellow);
+            border-radius: 8px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7);
+            z-index: 2000;
+            overflow: hidden;
+            display: none;
+            /* Hidden by default - non-invasive */
+        }
+
+        .dev-panel.open {
+            display: block;
+        }
+
+        .dev-header {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--accent-yellow);
+            padding: 8px 12px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: grab;
+            user-select: none;
+        }
+
+        .dev-header:active {
+            cursor: grabbing;
+        }
+
+        .dev-body {
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: calc(100vh - 120px);
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+
+        .dev-body.collapsed {
+            display: none;
+        }
+
+        .dev-group {
+            display: flex;
+            flex-direction: column;
+            border: 1px dashed rgba(245, 158, 11, 0.3);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .dev-group-title {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--accent-yellow);
+            padding: 6px 10px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .dev-group-title:hover {
+            background: rgba(245, 158, 11, 0.2);
+        }
+
+        .dev-group-content {
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: rgba(15, 23, 42, 0.6);
+        }
+
+        .dev-group-content.collapsed {
+            display: none;
+        }
+
+        .dev-btn {
+            background: rgba(245, 158, 11, 0.05);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            color: var(--accent-yellow);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+
+        .dev-btn:hover {
+            background: rgba(245, 158, 11, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- APP HEADER & SETTINGS BAR -->
+    <div class="app-header">
+        <div class="app-title">⚡ Bit Overflow Engine</div>
+        <div class="settings-bar">
+            <label for="format-select">Number Display:</label>
+            <select id="format-select" class="select-input" onchange="updateNumberFormatMode(this.value)">
+                <option value="commas" selected>Full Commas (Standard)</option>
+                <option value="scientific">Scientific Notation (1.84e19)</option>
+                <option value="engineering">Engineering Notation (18.45e18)</option>
+                <option value="names">Short Names (18.45 Quintillion)</option>
+                <option value="hex">Hexadecimal (0xFF...)</option>
+            </select>
+            <button class="dev-toggle-btn" onclick="toggleDevPanel()" title="Toggle Developer Tools">🛠️ DEV</button>
+        </div>
+    </div>
+
+    <!-- TOP REGION: REGISTER DISPLAY -->
+    <div class="top-region">
+        <div class="section-header">
+            <span>65-Bit Hardware Register (Single Bus Line)</span>
+            <span id="bit-count-label">Highest Bit: 0 / 64</span>
+        </div>
+        <div class="bit-container" id="bit-register">
+            <!-- Dynamically populated 65 bits grouped into bytes -->
+        </div>
+
+        <!-- SEGMENTED PROGRESS BAR & BYTE MILESTONES -->
+        <div class="progress-bar-container"
+            style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--panel-border);">
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">
+                <span>📊 CONTINUOUS BIT PROGRESSION & BYTE MILESTONES</span>
+                <span id="progress-milestone-label" style="color: var(--accent-green); font-weight: bold;">0 / 8 Bits
+                    Continuous (Milestone 1: +1 Byte)</span>
+            </div>
+            <div class="segmented-bar" id="segmented-progress-bar">
+                <!-- Dynamically populated 65 segment bars grouped into bytes -->
+            </div>
+        </div>
+
+        <div class="register-footer" id="register-footer"
+            style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--panel-border); display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 0.85rem; font-family: var(--font-mono); text-align: center;">
+            <span id="register-footer-content">⏱️ Time until all bits are set: <strong class="highlight-cyan"
+                    id="register-eta-label">--:--:--</strong></span>
+        </div>
+    </div>
+
+    <!-- CENTER HARDWARE MONITORING PANEL: POWER GRID (LEFT 50%) & THERMAL CPU (RIGHT 50%) -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px;">
+        <!-- HARDWARE POWER GRID STAT CARD (LEFT 50% WIDTH) -->
+        <div class="stat-card" id="power-card"
+            style="border-color: rgba(59, 130, 246, 0.4); background: rgba(15, 23, 42, 0.7); display: flex; flex-direction: column; justify-content: space-between; padding: 12px 16px;">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span class="stat-label" style="color: var(--accent-blue); font-size: 0.8rem; font-weight: bold;">⚡
+                        Hardware Power Grid</span>
+                    <span id="stat-power-val"
+                        style="font-family: var(--font-mono); font-weight: bold; color: var(--accent-cyan); font-size: 0.9rem;">1000.0
+                        / 1000.0 Units</span>
+                </div>
+
+                <!-- POWER CONTRIBUTORS BREAKDOWN READOUT ABOVE BAR -->
+                <div
+                    style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-wrap: wrap;">
+                    <span id="stat-power-breakdown" style="color: var(--accent-blue);">⚡ Sources: Charger (-0.00/s) |
+                        Clock (-0.00/s)</span>
+                    <span id="stat-power-net-summary" style="color: var(--accent-cyan); font-weight: bold;">Net:
+                        -0.00/s</span>
+                </div>
+
+                <!-- GRAPHIC BATTERY CONTAINER & MANUAL REFILL -->
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="battery-box"
+                        style="flex: 1; height: 20px; background: #0f172a; border: 2px solid var(--accent-blue); border-radius: 4px; padding: 2px; position: relative; box-shadow: inset 0 0 8px rgba(0,0,0,0.8);">
+                        <div id="battery-fill"
+                            style="height: 100%; width: 100%; background: linear-gradient(90deg, #10b981, #3b82f6); border-radius: 2px; transition: width 0.1s linear, background 0.2s ease;">
+                        </div>
+                    </div>
+                    <div style="width: 5px; height: 12px; background: var(--accent-blue); border-radius: 0 2px 2px 0;">
+                    </div>
+                    <button class="shop-btn" id="btn-manual-refill-power" onclick="game.convertBytesToPower(1n)"
+                        style="padding: 2px 10px; font-size: 0.75rem; border-color: var(--accent-green); color: var(--accent-green);">+100
+                        Power (-1 Byte)</button>
+                </div>
+
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-muted);">
+                    <span id="stat-power-drain">⏱️ Net Drain: -0.00 Units/sec</span>
+                    <span id="stat-power-status" style="color: var(--accent-green); font-weight: bold;">[GRID
+                        STABLE]</span>
+                </div>
+            </div>
+
+            <!-- AUTO-INVEST BYTES INTO POWER GRID CONTROLS (DIRECTLY BENEATH POWER BAR) -->
+            <div
+                style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(59, 130, 246, 0.3); display: flex; flex-direction: column; gap: 6px;">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span style="font-size: 0.75rem; color: var(--accent-cyan); font-weight: bold;">⚡ Auto-Invest
+                        Bytes:</span>
+                    <div style="display: flex; gap: 6px;">
+                        <button class="shop-btn" id="btn-toggle-invest-power" onclick="toggleAutoInvestPower()"
+                            style="padding: 2px 10px; font-size: 0.74rem; min-width: 45px;">OFF</button>
+                        <button class="shop-btn" id="btn-toggle-invest-mode" onclick="game.toggleAutoInvestMode()"
+                            style="padding: 2px 10px; font-size: 0.74rem; border-color: var(--accent-cyan); color: var(--accent-cyan);">MODE:
+                            KEEP ABOVE MIN</button>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.74rem; color: var(--text-muted);">Trigger &lt;</span>
+                    <input type="range" id="invest-power-range" min="100" max="900" value="800" step="50"
+                        oninput="updateInvestPowerThreshold(this.value)"
+                        style="flex: 1; cursor: pointer; accent-color: var(--accent-cyan);">
+                    <span id="invest-power-rate-label"
+                        style="font-family: var(--font-mono); font-size: 0.76rem; color: var(--accent-yellow); font-weight: bold; min-width: 140px; text-align: right;">800
+                        Units (Bytes)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- THERMAL CPU TEMPERATURE STAT CARD (RIGHT 50% WIDTH) -->
+        <div class="stat-card" id="thermal-card"
+            style="border-color: rgba(56, 189, 248, 0.4); background: rgba(15, 23, 42, 0.7); display: flex; flex-direction: column; justify-content: space-between; padding: 12px 16px;">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span class="stat-label" style="color: #38bdf8; font-size: 0.8rem; font-weight: bold;">🌡️ Thermal
+                        CPU Temperature</span>
+                    <span id="stat-temp-val"
+                        style="font-family: var(--font-mono); font-weight: bold; color: #38bdf8; font-size: 0.9rem;">20.0°C
+                        / 100.0°C</span>
+                </div>
+
+                <!-- THERMAL CONTRIBUTORS BREAKDOWN READOUT ABOVE BAR -->
+                <div
+                    style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-wrap: wrap;">
+                    <span id="stat-temp-gen-breakdown" style="color: #f59e0b;">🔥 Heat: Bits (+0.00°C/s) | Clock
+                        (+0.00°C/s)</span>
+                    <span id="stat-temp-cool-breakdown" style="color: #38bdf8;">❄️ Cool: Air (-5.0°C/s) | Fans
+                        (-0.0°C/s)</span>
+                </div>
+
+                <!-- GRAPHIC THERMOMETER BAR CONTAINER & MANUAL COOLANT -->
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div
+                        style="flex: 1; height: 20px; background: #0f172a; border: 2px solid #38bdf8; border-radius: 4px; padding: 2px; position: relative; box-shadow: inset 0 0 8px rgba(0,0,0,0.8);">
+                        <div id="temp-fill"
+                            style="height: 100%; width: 0%; background: linear-gradient(90deg, #38bdf8, #f59e0b, #ef4444); border-radius: 2px; transition: width 0.1s linear, background 0.2s ease;">
+                        </div>
+                    </div>
+                    <button class="shop-btn" id="btn-inject-coolant" onclick="game.injectCoolant()"
+                        style="padding: 2px 10px; font-size: 0.75rem; border-color: #38bdf8; color: #38bdf8;">❄️ Coolant
+                        (-1 Byte: -25°C)</button>
+                </div>
+
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-muted);">
+                    <span id="stat-temp-heat">🔥 Net Heat: +0.0°C/sec</span>
+                    <span id="stat-temp-status" style="color: var(--accent-green); font-weight: bold;">[OPTIMAL
+                        THERMALS]</span>
+                </div>
+            </div>
+
+            <!-- AUTO-COOLING BYTES CONTROLS (DIRECTLY BENEATH THERMOMETER BAR) -->
+            <div
+                style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(56, 189, 248, 0.3); display: flex; flex-direction: column; gap: 6px;">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span style="font-size: 0.75rem; color: #38bdf8; font-weight: bold;">❄️ Auto-Cooling Bytes:</span>
+                    <div style="display: flex; gap: 6px;">
+                        <button class="shop-btn" id="btn-toggle-auto-cooling" onclick="toggleAutoCooling()"
+                            style="padding: 2px 10px; font-size: 0.74rem; min-width: 45px;">OFF</button>
+                        <button class="shop-btn" id="btn-toggle-cooling-mode" onclick="game.toggleAutoCoolantMode()"
+                            style="padding: 2px 10px; font-size: 0.74rem; border-color: #38bdf8; color: #38bdf8;">MODE:
+                            TARGET THRESHOLD</button>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.74rem; color: var(--text-muted);">Trigger &gt;</span>
+                    <input type="range" id="auto-cooling-range" min="30" max="90" value="60" step="5"
+                        oninput="updateAutoCoolingThreshold(this.value)"
+                        style="flex: 1; cursor: pointer; accent-color: #38bdf8;">
+                    <span id="auto-cooling-rate-label"
+                        style="font-family: var(--font-mono); font-size: 0.76rem; color: #38bdf8; font-weight: bold; min-width: 140px; text-align: right;">60.0°C
+                        (Bytes)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CENTER REGION: NUMERICAL STATS PANEL & SINGLE CURRENCY BOX -->
+    <div class="stats-grid" style="margin-top: 12px;">
+
+        <!-- ALL CURRENCIES IN ONE CONSOLIDATED BOX -->
+        <div class="stat-card currency-card">
+            <div class="section-header" style="margin-bottom: 4px;">⚡ Game Currencies & Deltas</div>
+            <div class="currency-row">
+                <div class="currency-item">
+                    <span class="currency-label">Cycles</span>
+                    <span class="currency-value highlight" id="stat-cycles-val">0</span>
+                    <span class="currency-desc">+1 per Bit Added</span>
+                </div>
+                <div class="currency-item">
+                    <span class="currency-label">Bytes</span>
+                    <span class="currency-value highlight" id="stat-bytes-val">0</span>
+                    <div style="margin-top: 4px;">
+                        <button class="shop-btn" id="btn-collect-bytes" onclick="game.collectPendingBytes()"
+                            style="padding: 4px 8px; font-size: 0.74rem; font-weight: bold; width: 100%; border-color: var(--accent-green); color: var(--accent-green); transition: all 0.2s ease;">
+                            📦 STORE: 0 Bytes
+                        </button>
+                    </div>
+                </div>
+                <div class="currency-item" id="currency-card-crystals"
+                    style="border-color: rgba(168, 85, 247, 0.4); display: none;">
+                    <span class="currency-label" style="color: var(--accent-purple);">Crystals</span>
+                    <span class="currency-value highlight-purple" id="stat-crystals-val"
+                        style="font-size: 1.1rem; margin-top: 2px;">0 Crystals</span>
+                    <div
+                        style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; display: flex; flex-direction: column; gap: 2px;">
+                        <div>⚡ Value: <strong style="color: var(--accent-purple);" id="stat-crystal-potency">1%/sec per
+                                Crystal</strong></div>
+                        <div>⏱️ Clock Difference: <strong class="highlight-cyan" id="stat-crystal-delta">+0.00
+                                Hz</strong></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-label">Register Value (Base 10)</div>
+            <div class="stat-value highlight" id="stat-register-val">0</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-label">Clock Speed</div>
+            <div class="stat-value" id="stat-clock-val">0.00 Hz</div>
+            <div class="btn-subtext" id="stat-clock-subtext">Base 1 Hz × 1.00</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-label">Pulse Increment Delta</div>
+            <div class="stat-value highlight" id="stat-pulse-val">+1 Bit</div>
+            <div class="btn-subtext" id="stat-pulse-subtext">Per manual pulse or clock tick</div>
+        </div>
+    </div>
+
+    <!-- LOWER REGION: USER ACTIONS -->
+    <div class="bottom-region">
+        <div class="section-header">Available Control Actions</div>
+        <div class="actions-grid">
+            <button class="btn" id="btn-manual-pulse" onclick="game.manualPulse()">
+                <span>Manual Clock Pulse</span>
+                <span class="btn-subtext" id="manual-pulse-subtext">+1 Bit (0% Thermal Cost)</span>
+            </button>
+
+            <button class="btn" id="btn-reset-reg" onclick="game.resetRegister()">
+                <span>Reset Register</span>
+                <span class="btn-subtext">Set Register to 0 (Keep Currencies)</span>
+            </button>
+
+            <button class="btn" id="btn-buy-bit" onclick="game.buyBit()">
+                <span id="buy-bit-title">Unlock Bit 2</span>
+                <span class="btn-subtext" id="buy-bit-subtext">Cost: 10 Cycles</span>
+            </button>
+
+            <button class="btn" id="btn-prestige" onclick="openPrestigeModal()" disabled>
+                <span>Execute Prestige Reset</span>
+                <span class="btn-subtext" id="prestige-subtext">Requires Byte Boundary</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- SHOP REGION (ALWAYS UNLOCKED) -->
+    <div class="shop-panel" id="shop-panel">
+        <div class="section-header">
+            <span>🛒 UPGRADE SHOP</span>
+            <span id="shop-status-label">Unlocked & Available</span>
+        </div>
+        <div class="shop-grid" id="shop-grid">
+            <!-- Dynamically populated shop items -->
+        </div>
+    </div>
+
+    <!-- PRESTIGE NEON CONFIRMATION MODAL -->
+    <div class="modal-overlay" id="prestige-modal-overlay">
+        <div class="neon-modal prestige-modal">
+            <div class="modal-header">
+                <span>⚡ PRESTIGE PROTOCOL INITIALIZATION</span>
+                <span class="modal-close" onclick="closePrestigeModal()">✖</span>
+            </div>
+            <div class="modal-body">
+                <p class="modal-text">
+                    Executing Prestige will reset your active hardware register to zero and reset your <strong
+                        class="text-cyan">Cycles</strong>.
+                    In exchange, you will acquire permanent <strong class="text-cyan">Crystals</strong>, multiplying
+                    overall clock throughput and significantly boosting the power of your upgraded shop items!
+                </p>
+                <div class="modal-reward-card">
+                    <div class="reward-label">PROTOCOL REWARD</div>
+                    <div class="reward-value">+0.10 Crystals</div>
+                    <div class="reward-subtext">Permanent Clock Multiplier + Enhanced Upgrade Power</div>
+                </div>
+                <label
+                    style="display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--text-muted); margin-top: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="modal-suppress-checkbox" style="cursor: pointer;">
+                    <span>Do not show this confirmation modal again</span>
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button class="modal-btn cancel-btn" onclick="closePrestigeModal()">Cancel</button>
+                <button class="modal-btn confirm-btn" onclick="confirmPrestige()">Confirm Prestige Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 16-BIT BOUNDARY ACHIEVEMENT MODAL -->
+    <div class="modal-overlay" id="bit16-modal-overlay">
+        <div class="neon-modal"
+            style="border-color: var(--accent-yellow); box-shadow: 0 0 30px rgba(245, 158, 11, 0.4), 0 15px 35px rgba(0, 0, 0, 0.8);">
+            <div class="modal-header"
+                style="background: rgba(245, 158, 11, 0.15); color: var(--accent-yellow); border-bottom-color: rgba(245, 158, 11, 0.3);">
+                <span>🎉 16-BIT HARDWARE BOUNDARY UNLOCKED</span>
+                <span class="modal-close" onclick="closeBit16Modal()">✖</span>
+            </div>
+            <div class="modal-body">
+                <p class="modal-text" style="font-size: 0.9rem; font-weight: bold; color: var(--accent-yellow);">
+                    16 bits is 25% of 64 bits — if only...
+                </p>
+                <p class="modal-text">
+                    Reaching Bit 16 has unlocked <strong style="color: var(--accent-yellow);">Auto Prestige</strong>!
+                    You can now configure the system to automatically prestige whenever target byte boundaries are
+                    reached!
+                </p>
+                <div class="modal-reward-card"
+                    style="background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.4);">
+                    <div class="reward-label" style="color: var(--accent-yellow);">FEATURE UNLOCKED</div>
+                    <div class="reward-value" style="color: var(--accent-yellow);">Auto Prestige Available</div>
+                    <div class="reward-subtext">Configure Bit 8 or Bit 16 target in the Shop Panel</div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="modal-btn confirm-btn"
+                    style="background: rgba(245, 158, 11, 0.2); border-color: var(--accent-yellow); color: var(--accent-yellow);"
+                    onclick="closeBit16Modal()">Got It!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FLOATING DEV / CHEAT MENU (DRAGGABLE & HIDDEN BY DEFAULT) -->
+    <div class="dev-panel" id="dev-panel">
+        <div class="dev-header" id="dev-header">
+            <span>🖐️ 🛠️ DEVELOPER TOOLS (DRAGGABLE)</span>
+            <span style="cursor: pointer; padding: 2px 6px;" onclick="toggleDevPanel()">✖</span>
+        </div>
+        <div class="dev-body" id="dev-body">
+            <!-- INFINITE POWER & DISABLE HEAT DEV TOGGLES -->
+            <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+                <button class="dev-btn" id="dev-btn-infinite-power" onclick="toggleDevInfinitePower()" style="flex: 1; border-color: var(--accent-cyan);">⚡ Infinite Power: OFF</button>
+                <button class="dev-btn" id="dev-btn-disable-heat" onclick="toggleDevDisableHeat()" style="flex: 1; border-color: #38bdf8;">❄️ Disable Heat: OFF</button>
+            </div>
+
+            <button class="dev-btn" onclick="game.devAddBits(1000n)">+1,000 Bits</button>
+            <button class="dev-btn" onclick="game.devAddBits(18446744073709551615n)">+Max 64-Bit Integer</button>
+
+            <!-- NESTED SET BITS MENU -->
+            <div class="dev-group">
+                <div class="dev-group-title" onclick="toggleDevGroup('dev-set-bits')">
+                    <span>⚙️ Set Bits (Nested)</span>
+                    <span id="dev-set-bits-icon">►</span>
+                </div>
+                <div class="dev-group-content collapsed" id="dev-set-bits">
+                    <button class="dev-btn" onclick="game.devSetBits(8)">Bits 1 to 8 (Set to 254 - Bit 0 clear)</button>
+                    <button class="dev-btn" onclick="game.devSetBits(16)">Bits 1 to 16 (Set to 65,534 - Bit 0
+                        clear)</button>
+                    <button class="dev-btn" onclick="game.devSetBits(24)">Bits 1 to 24 (Set to 16.7M - Bit 0
+                        clear)</button>
+                    <button class="dev-btn" onclick="game.devSetBits(32)">Bits 1 to 32 (Set to 4.29B - Bit 0
+                        clear)</button>
+                    <button class="dev-btn" onclick="game.devSetBits(64)">Bits 1 to 64 (Full 64-Bit - Bit 0
+                        clear)</button>
+                </div>
+            </div>
+
+            <!-- NESTED SHOP & TIMER CHEATS -->
+            <div class="dev-group">
+                <div class="dev-group-title" onclick="toggleDevGroup('dev-shop-cheats')">
+                    <span>🛒 Shop & Reset Cheats</span>
+                    <span id="dev-shop-cheats-icon">►</span>
+                </div>
+                <div class="dev-group-content collapsed" id="dev-shop-cheats">
+                    <button class="dev-btn" onclick="game.devOpenShop()">🔓 Open / Unlock Shop (Force)</button>
+                    <button class="dev-btn" onclick="game.devBuyShop('clock')">+1 Level Clock Speed (Free)</button>
+                    <button class="dev-btn" onclick="game.devBuyShop('autoBuy')">+1 Level Auto-Buy Bit (Free)</button>
+                    <button class="dev-btn" onclick="game.devBuyShop('autoReset')">+1 Level Auto-Reset (Free)</button>
+                    <button class="dev-btn" onclick="game.devBuyShop('crystalPower')">+1 Level Crystal Power
+                        (Free)</button>
+                    <button class="dev-btn" onclick="game.devSetResetTimer(5.0)">Set Reset Fade: 5.0s (Default)</button>
+                    <button class="dev-btn" onclick="game.devSetResetTimer(1.0)">Set Reset Fade: 1.0s (Fast)</button>
+                    <button class="dev-btn" onclick="game.devSetResetTimer(0.1)">Set Reset Fade: 0.1s (Instant)</button>
+                </div>
+            </div>
+
+            <!-- NESTED DRAM DECAY CHEATS -->
+            <div class="dev-group">
+                <div class="dev-group-title" onclick="toggleDevGroup('dev-decay-cheats')">
+                    <span>⚡ DRAM Decay & Retention Cheats</span>
+                    <span id="dev-decay-cheats-icon">►</span>
+                </div>
+                <div class="dev-group-content collapsed" id="dev-decay-cheats">
+                    <button class="dev-btn" onclick="game.devSetRetentionTime(1.0)">Set Retention Time: 1.0s (Fast
+                        Decay)</button>
+                    <button class="dev-btn" onclick="game.devSetRetentionTime(3.0)">Set Retention Time: 3.0s</button>
+                    <button class="dev-btn" onclick="game.devSetRetentionTime(5.0)">Set Retention Time: 5.0s
+                        (Default)</button>
+                    <button class="dev-btn" onclick="game.devSetRetentionTime(10.0)">Set Retention Time: 10.0s
+                        (Slow)</button>
+                    <button class="dev-btn" onclick="game.devSetRetentionTime(30.0)">Set Retention Time: 30.0s
+                        (Chill)</button>
+                    <button class="dev-btn" onclick="game.devSetRetentionTime(300.0)">Set Retention Time: 300.0s
+                        (Don't worry)</button>
+                </div>
+            </div>
+
+            <!-- NESTED PULSE DELTA CHEATS -->
+            <div class="dev-group">
+                <div class="dev-group-title" onclick="toggleDevGroup('dev-pulse-cheats')">
+                    <span>⚡ Pulse Value Cheats</span>
+                    <span id="dev-pulse-cheats-icon">►</span>
+                </div>
+                <div class="dev-group-content collapsed" id="dev-pulse-cheats">
+                    <button class="dev-btn" onclick="game.devSetPulseDelta(1)">Set Pulse Value: +1 Bit</button>
+                    <button class="dev-btn" onclick="game.devSetPulseDelta(10)">Set Pulse Value: +10 Bits</button>
+                    <button class="dev-btn" onclick="game.devSetPulseDelta(100)">Set Pulse Value: +100 Bits</button>
+                    <button class="dev-btn" onclick="game.devSetPulseDelta(1000)">Set Pulse Value: +1,000 Bits</button>
+                </div>
+            </div>
+
+            <!-- NESTED TEST MODES & SCENARIO EDITOR (LOCALSTORAGE) -->
+            <div class="dev-group">
+                <div class="dev-group-title" onclick="toggleDevGroup('dev-test-modes')">
+                    <span>🧪 Test Modes & Scenario Editor</span>
+                    <span id="dev-test-modes-icon">►</span>
+                </div>
+                <div class="dev-group-content collapsed" id="dev-test-modes">
+                    <button class="dev-btn"
+                        style="background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border-color: var(--accent-green);"
+                        onclick="applyQuickTestMode(0)">
+                        ▶️ Test Mode 1 (8-Bit, Reg=255, +20 Crystals, Lvl 4 Power, Clock Lvl 2)
+                    </button>
+                    <button class="dev-btn"
+                        style="background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); border-color: var(--accent-blue);"
+                        onclick="applyQuickTestMode(1)">
+                        ▶️ Test Mode 2 (16-Bit Mid-Game, Reg=65535, +50 Crystals, Lvl 8 Power)
+                    </button>
+                    <button class="dev-btn"
+                        style="background: rgba(168, 85, 247, 0.15); color: var(--accent-purple); border-color: var(--accent-purple);"
+                        onclick="applyQuickTestMode(2)">
+                        ▶️ Test Mode 3 (32-Bit Heavy Overclock, +150 Crystals, Lvl 15 Power)
+                    </button>
+
+                    <div
+                        style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(245, 158, 11, 0.3); display: flex; flex-direction: column; gap: 4px;">
+                        <div style="font-size: 0.65rem; color: var(--text-muted); font-weight: bold;">✏️ PRESET
+                            CONFIGURATOR (LOCALSTORAGE)</div>
+                        <select id="preset-selector" onchange="loadPresetFormFromSelection()"
+                            style="background: #0f172a; color: var(--text-main); border: 1px solid var(--panel-border); font-family: var(--font-mono); font-size: 0.7rem; padding: 4px;">
+                            <option value="0">Preset 1: 8-Bit Auto-Prestige Test</option>
+                            <option value="1">Preset 2: 16-Bit Mid-Game Scenario</option>
+                            <option value="2">Preset 3: 32-Bit Endgame Overclock</option>
+                        </select>
+                        <div
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 4px; font-size: 0.65rem;">
+                            <label>Owned Bits: <input type="number" id="cfg-owned-bits" value="8" min="1" max="65"
+                                    style="width: 100%; background: #0f172a; color: #fff; border: 1px solid var(--panel-border);"></label>
+                            <label>Register (255/MAX): <input type="text" id="cfg-register" value="255"
+                                    style="width: 100%; background: #0f172a; color: #fff; border: 1px solid var(--panel-border);"></label>
+                            <label>Auto-Prestige Bit: <input type="number" id="cfg-auto-prestige" value="8"
+                                    style="width: 100%; background: #0f172a; color: #fff; border: 1px solid var(--panel-border);"></label>
+                            <label>Crystals: <input type="number" id="cfg-crystals" value="20"
+                                    style="width: 100%; background: #0f172a; color: #fff; border: 1px solid var(--panel-border);"></label>
+                            <label>Crystal Power Lvl: <input type="number" id="cfg-power-lvl" value="4"
+                                    style="width: 100%; background: #0f172a; color: #fff; border: 1px solid var(--panel-border);"></label>
+                            <label>Clock Level: <input type="number" id="cfg-clock-lvl" value="2"
+                                    style="width: 100%; background: #0f172a; color: #fff; border: 1px solid var(--panel-border);"></label>
+                        </div>
+                        <div style="display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap;">
+                            <button class="dev-btn" onclick="takeGameSnapshot()"
+                                style="flex: 1; background: rgba(245, 158, 11, 0.2); border-color: var(--accent-yellow); color: var(--accent-yellow);">📸
+                                Take Snapshot</button>
+                            <button class="dev-btn" onclick="saveActivePresetForm()" style="flex: 1;">💾 Save
+                                Preset</button>
+                            <button class="dev-btn" onclick="applyActivePresetForm()"
+                                style="flex: 1; background: rgba(16, 185, 129, 0.2); border-color: var(--accent-green); color: var(--accent-green);">▶️
+                                Apply Config</button>
+                            <button class="dev-btn" onclick="resetDefaultPresets()" style="padding: 4px 6px;">🔄
+                                Reset</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button class="dev-btn" onclick="game.devForceBit65()">Force Bit 65 Overflow</button>
+            <button class="dev-btn" onclick="game.devDrainPower()">Force Cold Start Power (10%)</button>
+            <button class="dev-btn" onclick="game.devTimeWarp(3600)">Fast-Forward 1 Hour</button>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // 1. NUMBER FORMATTER UTILITY
+        // =========================================================================
+        class NumberFormatter {
+            constructor() {
+                this.currentMode = 'commas';
+            }
+
+            setMode(mode) {
+                this.currentMode = mode;
+            }
+
+            format(value) {
+                const bigVal = typeof value === 'bigint' ? value : BigInt(Math.floor(value));
+
+                if (this.currentMode === 'hex') {
+                    return '0x' + bigVal.toString(16).toUpperCase();
+                }
+
+                // Numbers under 1,000,000 (1 Million) show exact commas by default
+                if (bigVal < 1000000n) {
+                    return bigVal.toLocaleString();
+                }
+
+                const str = bigVal.toString();
+                const len = str.length;
+
+                switch (this.currentMode) {
+                    case 'scientific': {
+                        if (bigVal === 0n) return '0.00e0';
+                        const exp = len - 1;
+                        const mantissa = (Number(str.substring(0, 4)) / Math.pow(10, Math.min(3, len - 1))).toFixed(2);
+                        return `${mantissa}e${exp}`;
+                    }
+
+                    case 'engineering': {
+                        if (bigVal === 0n) return '0.00e0';
+                        const exp = len - 1;
+                        const engExp = Math.floor(exp / 3) * 3;
+                        const rem = exp - engExp;
+                        const digitsNeeded = rem + 3;
+                        const sliceStr = str.substring(0, digitsNeeded);
+                        const mantissa = (Number(sliceStr) / Math.pow(10, digitsNeeded - 1 - rem)).toFixed(2);
+                        return `${mantissa}e${engExp}`;
+                    }
+
+                    case 'names': {
+                        const units = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
+                        if (bigVal === 0n) return '0';
+                        const i = Math.floor((len - 1) / 3);
+                        if (i > 0 && i < units.length) {
+                            const rem = (len - 1) % 3;
+                            const digitsNeeded = rem + 3;
+                            const sliceStr = str.substring(0, digitsNeeded);
+                            const mantissa = (Number(sliceStr) / Math.pow(10, digitsNeeded - 1 - rem)).toFixed(2);
+                            return `${mantissa} ${units[i]}`;
+                        }
+                        const exp = len - 1;
+                        const mantissa = (Number(str.substring(0, 4)) / Math.pow(10, Math.min(3, len - 1))).toFixed(2);
+                        return `${mantissa}e${exp}`;
+                    }
+
+                    case 'commas':
+                    default:
+                        return bigVal.toLocaleString();
+                }
+            }
+        }
+
+        const formatter = new NumberFormatter();
+
+        function formatTimeRemaining(seconds) {
+            if (!isFinite(seconds) || seconds < 0) return "--:--:--";
+            if (seconds === 0) return "00:00:00 (CAP REACHED)";
+            if (seconds > 31536000) return "> 1 Year";
+
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+
+            const pad = (n) => String(n).padStart(2, '0');
+            if (hrs >= 24) {
+                const days = Math.floor(hrs / 24);
+                const remHrs = hrs % 24;
+                return `${days}d ${pad(remHrs)}:${pad(mins)}:${pad(secs)}`;
+            }
+            return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
+        }
+
+        function updateNumberFormatMode(mode) {
+            formatter.setMode(mode);
+            updateUI();
+        }
+
+        // =========================================================================
+        // 2. CORE GAME ENGINE
+        // =========================================================================
+        class GameEngine {
+            constructor() {
+                this.register = 0n;
+                this.BIT_65 = 1n << 64n;
+
+                // Mechanics State
+                this.ownedBits = 1; // Starts owning 1 bit
+                this.autoAccumulator = 0.0;
+                this.maxContinuousBits = 0; // Sticky max contiguous set bits for current run
+                this.lastMilestoneAwarded = 0; // Completed milestone bit boundary (0, 8, 16, 24, 32...)
+
+                // Currencies & Deltas (Whole Crystals)
+                this.cycles = 0n;
+                this.bytes = 0n;
+                this.pendingBytes = 0n; // Byte Store for uncollected generated bytes
+                this.generatorLatched = [0, 0, 0, 0, 0, 0, 0, 0]; // Latched peak bits for G1..G8
+                this.generatorAwarded = [false, false, false, false, false, false, false, false];
+                this.crystals = 0; // Whole integer crystals
+
+                this.cycleDelta = 1n;
+                this.byteDelta = 1n;
+                this.crystalDelta = 1;
+                this.pulseDelta = 1n; // Increment added per pulse/click
+
+                // Dev Cheats State
+                this.devInfinitePower = false;
+                this.devDisableHeat = false;
+
+                // Clock Multipliers
+                this.baseClockHz = 1.0;
+                this.clockMultiplier = 1.00; // Base multiplier 1.20
+                this.crystalsEarnedByTier = { 8: 0, 16: 0, 24: 0, 32: 0, 40: 0, 48: 0, 56: 0, 64: 0 };
+
+                this.hasPrestiged = false;
+
+                // Shop Upgrades (Costs start at 256 Cycles, Crystal Power costs Bytes)
+                this.shop = {
+                    clock: { name: "Clock (1 Hz Base)", level: 0, baseCost: 256n, costMult: 2n, currency: 'cycles', desc: "Doubles base clock frequency (1 Hz, 2 Hz, 4 Hz, 8 Hz...) with each level." },
+                    autoBuy: { name: "Auto Buy Bit", level: 0, baseCost: 256n, costMult: 2n, currency: 'cycles', desc: "Automatically purchases the next bit when affordable." },
+                    autoReset: { name: "Auto Reset", level: 0, baseCost: 256n, costMult: 2n, currency: 'cycles', desc: "Automatically initiates a 5-second fade reset when maxed out." },
+                    coolingFan: { name: "Cooling Fan (-5°C/s)", level: 0, baseCost: 2n, costMult: 2n, currency: 'bytes', desc: "Increases cooling fan count for heat dissipation." },
+                    fanPower: { name: "Fan RPM & Efficiency", level: 0, baseCost: 1024n, costMult: 2n, currency: 'cycles', desc: "Increases cooling rate per fan (-5°C/s -> -8°C/s -> -11°C/s...)." },
+                    waterCooling: { name: "Liquid Water Cooling Loop", level: 0, baseCost: 64n, costMult: 4n, currency: 'bytes', desc: "Installs a liquid cooling loop providing -30°C/s cooling and raising throttle temp to 85°C." },
+                    crystalPower: { name: "Crystal Power (+1%/Lvl)", level: 0, baseCost: 1n, costMult: 2n, currency: 'bytes', desc: "Increases Crystal potency exponent boost (1%/ea at Lvl 0, 2%/ea at Lvl 1, 3%/ea at Lvl 2...)." }
+                };
+
+                // Thermal System (20.0°C to 100.0°C) & Auto-Cooling Bytes System
+                this.temp = 20.0;
+                this.ambientTemp = 20.0;
+                this.maxTemp = 100.0;
+                this.netHeatRate = 0.0;
+                this.isShutdown = false;
+                this.autoCoolantEnabled = false;
+                this.autoCoolantThreshold = 60.0; // Trigger temperature (°C)
+                this.autoCoolantMode = 'min'; // 'min' = Spend 1 Byte (-25°C) to lower temp below threshold; 'fill' = Full Chill to 20°C
+
+                // Persistent Prestige & Auto Prestige State
+                this.highestByteBoundaryReached = 0;
+                this.hasReachedBit16 = false;
+                this.suppressPrestigeModal = false;
+                this.autoPrestigeTarget = 0; // 0 = OFF, 8 = Bit 8, 16 = Bit 16...
+
+                // Continuous Overclock Run Timer
+                this.runTimeSeconds = 0.0;
+
+                // DRAM Capacitor Leakage & Dedicated Bit Chargers
+                this.bitCharge = new Array(65).fill(0.0);
+                this.retentionTime = 5.0; // Seconds until full discharge
+                this.bitChargers = new Array(65).fill(false);
+                this.bitChargerCostMultiplier = 2n; // Configurable: cost = 2x bit unlock cost
+
+                // Power Grid Mechanics (1000 units max) & Smart Auto-Invest Bytes
+                this.maxPower = 1000.0;
+                this.power = 1000.0;
+                this.powerDrainRate = 0.0; // Units/sec net drain
+                this.autoInvestThreshold = 800.0; // Target threshold (Power Units below which auto-invest triggers)
+                this.autoInvestPowerEnabled = false;
+                this.autoInvestMode = 'min'; // 'min' = Spend 1 Byte only when below min threshold; 'fill' = Full Refill to 100% capacity
+
+                // Auto Reset Toggle & Fade Animation State
+                this.autoResetEnabled = true;
+                this.isResetting = false;
+                this.resetTimer = 0.0;
+                this.resetDuration = 5.0; // Default 5 seconds
+            }
+
+            getMaxRegister() {
+                return (1n << BigInt(this.ownedBits)) - 1n;
+            }
+
+            getBitCost() {
+                // Cost = 10x max value of currently owned bits
+                return 10n * this.getMaxRegister();
+            }
+
+            getClockSpeed() {
+                if (this.power <= 0.0 || this.isShutdown) return 0.0; // Power empty or Thermal Meltdown Shutdown
+                // Manual only until Clock is purchased in shop (level >= 1)
+                if (this.shop.clock.level === 0) return 0.0;
+                // Base Hz doubles with each level: 2^(level - 1) Hz (1Hz, 2Hz, 4Hz, 8Hz...)
+                const baseHz = Math.pow(2, this.shop.clock.level - 1);
+                const multBase = this.clockMultiplier; // 1.20
+
+                const pctPerSec = 1.0 + this.shop.crystalPower.level;
+                const accelerationFactor = 1.0 + (this.crystals * (pctPerSec / 100.0) * this.runTimeSeconds);
+
+                let clockHz = baseHz * multBase * accelerationFactor;
+
+                // Thermal Throttling Factor (Slows clock if temp > threshold)
+                const throttleTemp = this.shop.waterCooling.level > 0 ? 85.0 : 60.0;
+                if (this.temp > throttleTemp) {
+                    if (this.temp >= 85.0 && this.shop.waterCooling.level === 0) {
+                        clockHz *= 0.20; // 80% Throttling in critical zone
+                    } else {
+                        const throttleRange = 100.0 - throttleTemp;
+                        const throttleFactor = Math.max(0.10, 1.0 - ((this.temp - throttleTemp) / throttleRange) * 0.70);
+                        clockHz *= throttleFactor;
+                    }
+                }
+
+                // Failsafes to protect browser execution
+                if (!isFinite(clockHz) || clockHz > 1e12) {
+                    clockHz = 1e12;
+                }
+                if (isNaN(clockHz) || clockHz < 0) {
+                    clockHz = 0;
+                }
+                return clockHz;
+            }
+
+            getClockAccelerationFactor() {
+                const pctPerSec = 1.0 + this.shop.crystalPower.level;
+                return 1.0 + (this.crystals * (pctPerSec / 100.0) * this.runTimeSeconds);
+            }
+
+            getPrestigeReward(targetBit = null) {
+                const tier = targetBit || (Math.floor(this.highestByteBoundaryReached / 8) * 8);
+                if (tier < 8) return { yield: 0, tier: 0, capped: false, cap: 0, earned: 0, remaining: 0 };
+
+                const specs = {
+                    8: { yield: 1, cap: 10 },    // 1 Whole Crystal per Prestige, Max 10 Crystals from Bit 8
+                    16: { yield: 3, cap: 30 },   // 3 Whole Crystals per Prestige, Max 30 Crystals from Bit 16
+                    24: { yield: 5, cap: 50 },   // 5 Whole Crystals per Prestige, Max 50 Crystals from Bit 24
+                    32: { yield: 10, cap: 100 }, // 10 Whole Crystals per Prestige, Max 100 Crystals from Bit 32
+                    40: { yield: 20, cap: 200 }, // 20 Whole Crystals per Prestige, Max 200 Crystals from Bit 40
+                    48: { yield: 40, cap: 400 }, // 40 Whole Crystals per Prestige, Max 400 Crystals from Bit 48
+                    56: { yield: 80, cap: 800 }, // 80 Whole Crystals per Prestige, Max 800 Crystals from Bit 56
+                    64: { yield: 150, cap: 1500 } // 150 Whole Crystals per Prestige, Max 1500 Crystals from Bit 64
+                };
+
+                const spec = specs[tier] || { yield: 1, cap: 10 };
+                const earned = this.crystalsEarnedByTier[tier] || 0;
+                const remaining = Math.max(0, spec.cap - earned);
+                const actualYield = Math.min(spec.yield, remaining);
+
+                return {
+                    tier,
+                    yield: actualYield,
+                    capped: remaining <= 0,
+                    cap: spec.cap,
+                    earned,
+                    remaining
+                };
+            }
+
+            getTierRemainingCrystals(tier) {
+                const specs = { 8: 10, 16: 30, 24: 50, 32: 100, 40: 200, 48: 400, 56: 800, 64: 1500 };
+                const cap = specs[tier] || 10;
+                const earned = this.crystalsEarnedByTier[tier] || 0;
+                return Math.max(0, cap - earned);
+            }
+
+            getBitUnlockCostForBit(bitIndex) {
+                if (bitIndex <= 1) return 10n;
+                return 10n * ((1n << BigInt(bitIndex - 1)) - 1n);
+            }
+
+            getBitChargerCost(bitIndex) {
+                return this.bitChargerCostMultiplier * this.getBitUnlockCostForBit(bitIndex);
+            }
+
+            canBuyBitCharger(bitIndex) {
+                if (bitIndex < 1 || bitIndex > this.ownedBits || this.isResetting) return false;
+                const idx = bitIndex - 1;
+                if (this.bitChargers[idx]) return true; // Clicking active charger toggles OFF
+                const cost = this.getBitChargerCost(bitIndex);
+                return this.cycles >= cost;
+            }
+
+            buyBitCharger(bitIndex) {
+                if (!this.canBuyBitCharger(bitIndex)) return false;
+                const idx = bitIndex - 1;
+
+                // If already active on this bit, toggle OFF
+                if (this.bitChargers[idx]) {
+                    this.bitChargers[idx] = false;
+                    updateUI();
+                    return true;
+                }
+
+                // Only ONE bit can have a dedicated refresh charger active at a time!
+                const cost = this.getBitChargerCost(bitIndex);
+                this.cycles -= cost;
+                this.bitChargers.fill(false); // Clear any existing charger
+                this.bitChargers[idx] = true;
+                this.bitCharge[idx] = 1.0;
+                updateUI();
+                return true;
+            }
+
+            convertBytesToPower(amountBytes = 1n) {
+                const amt = typeof amountBytes === 'bigint' ? amountBytes : BigInt(amountBytes);
+                if (amt <= 0n || this.bytes < amt) return false;
+
+                // Capacity room check: only spend bytes when there is room for at least +100 full power units
+                const capacityRoom = this.maxPower - this.power;
+                if (capacityRoom < 100.0) return false; // Prevent wasting bytes when grid is nearly full!
+
+                const maxSpendableBytes = BigInt(Math.floor(capacityRoom / 100.0));
+                const actualSpend = amt > maxSpendableBytes ? maxSpendableBytes : amt;
+                if (actualSpend <= 0n) return false;
+
+                this.bytes -= actualSpend;
+                this.power += Number(actualSpend) * 100.0;
+                updateUI();
+                return true;
+            }
+
+            injectCoolant() {
+                return this.convertBytesToCooling(1n);
+            }
+
+            convertBytesToCooling(amountBytes = 1n) {
+                const amt = typeof amountBytes === 'bigint' ? amountBytes : BigInt(amountBytes);
+                if (amt <= 0n || this.bytes < amt) return false;
+                if (this.temp <= this.ambientTemp) return false;
+
+                const heatDeficit = this.temp - this.ambientTemp;
+                const maxSpendableBytes = BigInt(Math.ceil(heatDeficit / 35.0));
+                const actualSpend = amt > maxSpendableBytes ? maxSpendableBytes : amt;
+                if (actualSpend <= 0n) return false;
+
+                this.bytes -= actualSpend;
+                this.temp = Math.max(this.ambientTemp, this.temp - Number(actualSpend) * 35.0);
+                updateUI();
+                return true;
+            }
+
+            toggleAutoCoolantMode() {
+                this.autoCoolantMode = this.autoCoolantMode === 'fill' ? 'min' : 'fill';
+                updateUI();
+            }
+
+            canBuyBit() {
+                return this.cycles >= this.getBitCost() && this.ownedBits < 65 && !this.isResetting;
+            }
+
+            isMaxedOut() {
+                return this.register >= this.getMaxRegister();
+            }
+
+            canPulse() {
+                return !this.isMaxedOut() && !this.isResetting;
+            }
+
+            collectPendingBytes() {
+                if (this.pendingBytes <= 0n) return 0n;
+                const claimed = this.pendingBytes;
+                this.bytes += claimed;
+                this.pendingBytes = 0n;
+                updateUI();
+                return claimed;
+            }
+
+            canPrestige() {
+                return this.highestByteBoundaryReached >= 8 && !this.isResetting;
+            }
+
+            resetRegister() {
+                this.register = 0n;
+                this.highestByteBoundaryReached = 0;
+                this.lastMilestoneAwarded = 0;
+                this.maxContinuousBits = 0; // Reset sticky max contiguous bits for new run
+                this.generatorLatched = [0, 0, 0, 0, 0, 0, 0, 0];
+                this.generatorAwarded = [false, false, false, false, false, false, false, false];
+                this.runTimeSeconds = 0.0; // Reset run timer on register reset/prestige
+                for (let i = 0; i < 65; i++) {
+                    if (!this.bitChargers[i]) {
+                        this.bitCharge[i] = 0.0;
+                    }
+                }
+            }
+
+            toggleAutoReset() {
+                this.autoResetEnabled = !this.autoResetEnabled;
+                updateUI();
+            }
+
+            getResetDuration() {
+                if (this.shop.autoReset.level === 0) return 5.0;
+                return Math.max(0.1, 5.0 - (this.shop.autoReset.level - 1) * 0.2);
+            }
+
+            startAutoReset() {
+                if (this.isResetting) return;
+                this.isResetting = true;
+                this.resetDuration = this.getResetDuration();
+                this.resetTimer = this.resetDuration;
+            }
+
+            executePrestige() {
+                if (!this.canPrestige()) return false;
+                const reward = this.getPrestigeReward();
+                if (reward.yield > 0) {
+                    this.crystals += reward.yield;
+                    if (!this.crystalsEarnedByTier[reward.tier]) {
+                        this.crystalsEarnedByTier[reward.tier] = 0.0;
+                    }
+                    this.crystalsEarnedByTier[reward.tier] += reward.yield;
+                }
+                this.hasPrestiged = true;
+                this.cycles = 0n; // Clear cycles on Prestige
+                this.resetRegister();
+                return true;
+            }
+
+            setAutoPrestigeTarget(targetBit) {
+                this.autoPrestigeTarget = targetBit;
+                updateUI();
+            }
+
+            buyBit() {
+                if (!this.canBuyBit()) return false;
+                const cost = this.getBitCost();
+                this.cycles -= cost;
+                this.ownedBits += 1;
+                return true;
+            }
+
+            getShopCost(key) {
+                const item = this.shop[key];
+                if (!item) return 0n;
+                let cost = item.baseCost;
+                for (let i = 0; i < item.level; i++) {
+                    cost *= item.costMult;
+                }
+                return cost;
+            }
+
+            canBuyShopItem(key) {
+                const item = this.shop[key];
+                if (!item) return false;
+                const cost = this.getShopCost(key);
+                if (item.currency === 'bytes') {
+                    return this.bytes >= cost;
+                }
+                return this.cycles >= cost;
+            }
+
+            buyShopItem(key) {
+                if (!this.canBuyShopItem(key)) return false;
+                const item = this.shop[key];
+                const cost = this.getShopCost(key);
+                if (item.currency === 'bytes') {
+                    this.bytes -= cost;
+                } else {
+                    this.cycles -= cost;
+                }
+                this.shop[key].level += 1;
+                updateUI();
+                return true;
+            }
+
+            addRegister(amount) {
+                const amt = typeof amount === 'bigint' ? amount : BigInt(Math.floor(amount));
+                if (amt <= 0n || this.isResetting) return 0n;
+
+                const maxReg = this.getMaxRegister();
+                if (this.register >= maxReg) return 0n;
+
+                const actualAdded = (this.register + amt > maxReg) ? (maxReg - this.register) : amt;
+                const oldReg = this.register;
+                const newReg = oldReg + actualAdded;
+                this.register = newReg;
+
+                // 1. Cycles increment permanently by actual added amount * cycleDelta
+                this.cycles += actualAdded * this.cycleDelta;
+
+                // 2. Track Byte Boundary Rollovers & Deposit Bytes into Pending Byte Store
+                let addedBytes = 0n;
+                for (let k = 1; k <= 8; k++) {
+                    const mask = 1n << BigInt(8 * k);
+                    const occurrences = ((newReg + 1n) / mask) - ((oldReg + 1n) / mask);
+                    if (occurrences > 0n) {
+                        addedBytes += occurrences * BigInt(k); // Byte Group k generates k Bytes per rollover!
+                    }
+
+                    const boundaryBits = 8 * k;
+                    if (boundaryBits <= this.ownedBits) {
+                        const boundaryMask = (1n << BigInt(boundaryBits)) - 1n;
+                        if (this.register >= boundaryMask) {
+                            if (boundaryBits > this.highestByteBoundaryReached) {
+                                this.highestByteBoundaryReached = boundaryBits;
+                                if (boundaryBits >= 16 && !this.hasReachedBit16) {
+                                    this.hasReachedBit16 = true;
+                                    setTimeout(() => openBit16Modal(), 10);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. Track Cascading Byte Generators G1..G8 & High-Frequency Multi-Rollovers
+                let newlyAwardedBytes = 0n;
+                for (let k = 0; k < 8; k++) {
+                    const startBit = k * 8;
+                    const endBit = (k + 1) * 8;
+                    const cyclePeriod = 1n << BigInt(endBit);
+
+                    // A. Calculate complete cycle rollovers during large additions (for high clock / large deltas)
+                    const oldCycle = oldReg / cyclePeriod;
+                    const newCycle = newReg / cyclePeriod;
+                    const cycleDiff = newCycle - oldCycle;
+
+                    if (cycleDiff > 0n) {
+                        newlyAwardedBytes += cycleDiff * BigInt(k + 1);
+                        this.generatorLatched[k] = 0; // Reset latch for new cycle
+                        this.generatorAwarded[k] = false;
+                    }
+
+                    // B. Check if all lower bytes 0..k-1 are fully set (lower 8*k bits = all 1s)
+                    const lowerMask = k === 0 ? 0n : ((1n << BigInt(startBit)) - 1n);
+                    const isLowerFull = k === 0 || ((newReg & lowerMask) === lowerMask);
+
+                    let contBits = 0;
+                    if (isLowerFull) {
+                        while (contBits < 8 && (newReg & (1n << BigInt(startBit + contBits))) !== 0n) {
+                            contBits++;
+                        }
+                    }
+
+                    if (contBits > this.generatorLatched[k]) {
+                        this.generatorLatched[k] = contBits;
+                    }
+
+                    if (this.generatorLatched[k] >= 8 && !this.generatorAwarded[k]) {
+                        this.generatorAwarded[k] = true;
+                        newlyAwardedBytes += BigInt(k + 1);
+                    }
+                }
+
+                this.pendingBytes += newlyAwardedBytes * this.byteDelta;
+
+                // 4. Update Charge Level ONLY for newly turned on bits
+                const newlyTurnedOn = ~oldReg & newReg;
+                for (let i = 0; i < 65; i++) {
+                    if ((newlyTurnedOn & (1n << BigInt(i))) !== 0n) {
+                        this.bitCharge[i] = 1.0;
+                    }
+                }
+
+                return actualAdded;
+            }
+
+            tick(dt) {
+                // Infinite Power Override
+                if (this.devInfinitePower) {
+                    this.power = this.maxPower;
+                }
+
+                // Disable Heat / Meltdown Override
+                if (this.devDisableHeat) {
+                    this.temp = this.ambientTemp;
+                    this.isShutdown = false;
+                }
+
+                // 1. Auto-Reset Fade Animation Tick
+                if (this.isResetting) {
+                    this.resetTimer -= dt;
+                    if (this.resetTimer <= 0) {
+                        this.resetTimer = 0;
+                        this.isResetting = false;
+                        this.resetRegister();
+                    }
+                    return; // Pause bit generation during reset fade
+                }
+
+                // Increment continuous run timer
+                this.runTimeSeconds += dt;
+
+                // Smart Threshold-Based Byte Investment (Whole Bytes Only: 1 Byte = +100 Power)
+                if (this.autoInvestPowerEnabled && this.bytes >= 1n && this.power <= this.autoInvestThreshold) {
+                    const capacityRoom = this.maxPower - this.power;
+                    if (capacityRoom >= 100.0) {
+                        if (this.autoInvestMode === 'min') {
+                            this.bytes -= 1n;
+                            this.power += 100.0;
+                        } else {
+                            const wholeBytesNeeded = BigInt(Math.floor(capacityRoom / 100.0));
+                            const actualSpend = wholeBytesNeeded > this.bytes ? this.bytes : wholeBytesNeeded;
+                            if (actualSpend > 0n) {
+                                this.bytes -= actualSpend;
+                                this.power += Number(actualSpend) * 100.0;
+                            }
+                        }
+                    }
+                }
+
+                // Auto Cooling using Bytes (injects coolant when temp > autoCoolantThreshold)
+                if (this.autoCoolantEnabled && this.bytes >= 1n && this.temp > this.autoCoolantThreshold) {
+                    if (this.autoCoolantMode === 'min') {
+                        this.convertBytesToCooling(1n);
+                    } else {
+                        const heatDeficit = this.temp - this.ambientTemp;
+                        const bytesNeeded = BigInt(Math.ceil(heatDeficit / 25.0));
+                        const actualBytes = bytesNeeded > this.bytes ? this.bytes : bytesNeeded;
+                        if (actualBytes > 0n) {
+                            this.convertBytesToCooling(actualBytes);
+                        }
+                    }
+                }
+
+                // 1.5 Thermal Dynamics & Heat Generation Calculation
+                this.netHeatRate = this.getNetHeatRate();
+
+                if (this.temp > this.ambientTemp || this.netHeatRate > 0) {
+                    this.temp = Math.max(this.ambientTemp, Math.min(this.maxTemp, this.temp + this.netHeatRate * dt));
+                }
+
+                // Check Thermal Meltdown Shutdown
+                if (this.temp >= this.maxTemp) {
+                    this.isShutdown = true;
+                } else if (this.isShutdown && this.temp <= 70.0) {
+                    this.isShutdown = false;
+                }
+
+                // 2. Power Grid Net Drain Calculation
+                let netDrainPerSec = 0.0;
+                const activeChargerIdx = this.bitChargers.findIndex((c, idx) => c && idx < this.ownedBits);
+                if (activeChargerIdx !== -1) {
+                    const bitNumber = activeChargerIdx + 1; // 1-indexed bit number X
+                    netDrainPerSec += 1.0 * bitNumber; // 1 * X units/sec
+                }
+
+                const clockHz = this.getClockSpeed();
+                if (clockHz > 0) {
+                    netDrainPerSec += 0.10 * Math.log2(1.0 + clockHz); // Smooth sublinear clock power drain
+                }
+
+                this.powerDrainRate = netDrainPerSec;
+
+                if (this.power > 0) {
+                    this.power = Math.max(0.0, this.power - netDrainPerSec * dt);
+                }
+                const hasPower = this.power > 0;
+
+                // 3. Clock Speed Bit Generation (Requires Power)
+                if (clockHz > 0 && this.canPulse() && hasPower) {
+                    this.autoAccumulator += clockHz * dt;
+                    if (this.autoAccumulator >= 1.0) {
+                        const wholeBits = Math.floor(this.autoAccumulator);
+                        this.autoAccumulator -= wholeBits;
+                        this.addRegister(BigInt(wholeBits) * this.pulseDelta);
+                    }
+                }
+
+                // 4. DRAM Capacitor Leakage & Dedicated Circuit Refresh Loop
+                for (let i = 0; i < 65; i++) {
+                    const isSet = (this.register & (1n << BigInt(i))) !== 0n;
+                    const bitNumber = i + 1; // 1-indexed bit number X
+
+                    if (this.bitChargers[i] && isSet) {
+                        // Proportional Refresh Pulse: Cost = (10 * X) * (1.0 - currentCharge)
+                        const chargeDeficit = 1.0 - this.bitCharge[i];
+                        if (chargeDeficit > 0.001) {
+                            const maxRefillCost = 10.0 * bitNumber;
+                            const proportionalCost = maxRefillCost * chargeDeficit;
+                            if (this.power >= proportionalCost) {
+                                this.power -= proportionalCost;
+                                this.bitCharge[i] = 1.0;
+                                this.temp = Math.min(this.maxTemp, this.temp + 0.05);
+                            } else if (this.power > 0) {
+                                const restoredCharge = this.power / maxRefillCost;
+                                this.bitCharge[i] = Math.min(1.0, this.bitCharge[i] + restoredCharge);
+                                this.power = 0.0;
+                                this.temp = Math.min(this.maxTemp, this.temp + 0.02);
+                            }
+                        }
+                        this.bitCharge[i] -= dt / this.retentionTime;
+                        if (this.bitCharge[i] <= 0.0) {
+                            this.bitCharge[i] = 0.0;
+                            this.register &= ~(1n << BigInt(i));
+                        }
+                    } else if (isSet) {
+                        if (this.bitCharge[i] <= 0.0) {
+                            this.bitCharge[i] = 1.0;
+                        }
+                        this.bitCharge[i] -= dt / this.retentionTime;
+                        if (this.bitCharge[i] <= 0.0) {
+                            this.bitCharge[i] = 0.0;
+                            this.register &= ~(1n << BigInt(i)); // Discharge bit back to 0
+                        }
+                    } else {
+                        this.bitCharge[i] = 0.0;
+                    }
+                }
+
+                // 5. Auto-Buy Bit Logic (if unlocked in shop)
+                if (this.shop.autoBuy.level > 0 && this.canBuyBit()) {
+                    this.buyBit();
+                }
+
+                // 6. Auto-Reset Logic (if unlocked in shop and enabled)
+                if (this.shop.autoReset.level > 0 && this.autoResetEnabled && this.isMaxedOut()) {
+                    this.startAutoReset();
+                }
+
+                // 7. Auto-Prestige Logic
+                if (this.autoPrestigeTarget > 0 && this.highestByteBoundaryReached >= this.autoPrestigeTarget) {
+                    const reward = this.getPrestigeReward(this.autoPrestigeTarget);
+                    if (reward.yield > 0) {
+                        this.executePrestige();
+                    }
+                }
+            }
+
+            getSetBitCount() {
+                let count = 0n;
+                let reg = this.register;
+                while (reg > 0n) {
+                    count += reg & 1n;
+                    reg >>= 1n;
+                }
+                return count;
+            }
+
+            getNetHeatRate() {
+                // Smooth logarithmic heat generation from active bits and clock frequency
+                const bitsActive = Number(this.getSetBitCount());
+                const clockHz = this.getClockSpeed();
+
+                // Active set bits generate +0.05°C/sec each
+                const bitHeat = bitsActive * 0.05;
+
+                // Clock frequency generates sublinear heat: +1.50 * log2(1 + clockHz)°C/sec
+                const clockHeat = clockHz > 0 ? 1.50 * Math.log2(1.0 + clockHz) : 0.0;
+                const totalHeatGen = bitHeat + clockHeat;
+
+                // Base air dissipation -5.0°C/sec + Fan Cooling + Liquid Cooling
+                const fanCoolingPerFan = 8.0 + (this.shop.fanPower.level * 4.0);
+                const fanCooling = (this.shop.coolingFan.level * fanCoolingPerFan);
+                const waterCoolingRate = this.shop.waterCooling.level > 0 ? (40.0 * this.shop.waterCooling.level) : 0.0;
+
+                const baseDissipation = 5.0; // Ambient air dissipation (-5°C/sec)
+                const totalCooling = baseDissipation + fanCooling + waterCoolingRate;
+
+                return totalHeatGen - totalCooling;
+            }
+
+            toggleAutoCooling() {
+                this.autoCoolantEnabled = !this.autoCoolantEnabled;
+                updateUI();
+            }
+
+            manualPulse() {
+                return this.addRegister(this.pulseDelta);
+            }
+
+            // Dev Actions
+            devDrainPower() {
+                this.power = 100.0;
+                updateUI();
+            }
+
+            devSetPulseDelta(val) {
+                this.pulseDelta = BigInt(val);
+                updateUI();
+            }
+
+            applyTestPreset(config) {
+                this.ownedBits = Math.max(1, Math.min(65, Number(config.ownedBits || 8)));
+
+                if (config.register === 'MAX' || config.register === undefined) {
+                    this.register = (1n << BigInt(this.ownedBits)) - 1n;
+                } else {
+                    try {
+                        this.register = BigInt(config.register);
+                    } catch (e) {
+                        this.register = (1n << BigInt(this.ownedBits)) - 1n;
+                    }
+                }
+
+                this.autoPrestigeTarget = Number(config.autoPrestigeTarget || 0);
+                this.crystals = Number(config.crystals || 0);
+                this.shop.crystalPower.level = Number(config.crystalPowerLevel || 0);
+                this.shop.clock.level = Number(config.clockLevel || 1);
+
+                this.hasPrestiged = true;
+                this.highestByteBoundaryReached = (Math.floor(this.ownedBits / 8) * 8);
+                if (this.ownedBits >= 16) {
+                    this.hasReachedBit16 = true;
+                }
+
+                // Refresh charges for active bits
+                for (let i = 0; i < 65; i++) {
+                    if ((this.register & (1n << BigInt(i))) !== 0n || this.bitChargers[i]) {
+                        this.bitCharge[i] = 1.0;
+                    }
+                }
+
+                updateUI();
+            }
+            devAddBits(amount) { this.addRegister(amount); }
+            devSetBits(numBits) {
+                if (this.ownedBits < numBits) {
+                    this.ownedBits = numBits;
+                }
+                const target = (1n << BigInt(numBits)) - 2n;
+                if (target > this.register) {
+                    this.addRegister(target - this.register);
+                } else {
+                    this.register = target;
+                }
+            }
+            devForceBit65() {
+                if (this.ownedBits < 65) this.ownedBits = 65;
+                const target = this.BIT_65;
+                if (target > this.register) {
+                    this.addRegister(target - this.register);
+                } else {
+                    this.register = target;
+                }
+            }
+            devOpenShop() {
+                this.hasPrestiged = true;
+            }
+            devUnlockPrestige() {
+                this.hasPrestiged = true;
+                this.crystals += this.crystalDelta;
+            }
+            devBuyShop(key) {
+                if (this.shop[key]) {
+                    this.shop[key].level += 1;
+                    this.hasPrestiged = true;
+                }
+            }
+            devSetResetTimer(seconds) {
+                this.resetDuration = seconds;
+            }
+            devSetRetentionTime(seconds) {
+                this.retentionTime = Math.max(0.5, Number(seconds));
+                updateUI();
+            }
+            devTimeWarp(seconds) {
+                const step = 0.1;
+                const ticks = Math.floor(seconds / step);
+                for (let i = 0; i < ticks; i++) {
+                    this.tick(step);
+                }
+            }
+        }
+
+        const game = new GameEngine();
+
+        // =========================================================================
+        // 3. UI CONTROLLER & BIT REGISTER BUILDER
+        // =========================================================================
+        const registerEl = document.getElementById('bit-register');
+        const progressBarEl = document.getElementById('segmented-progress-bar');
+        const bitElements = [];
+        let byteSegmentBlocks = [];
+
+        function initRegisterUI() {
+            registerEl.innerHTML = '';
+            progressBarEl.innerHTML = '';
+            bitElements.length = 0;
+            byteSegmentBlocks = [];
+
+            let currentBitGroup = null;
+
+            for (let i = 0; i < 65; i++) {
+                if (i % 8 === 0) {
+                    currentBitGroup = document.createElement('div');
+                    currentBitGroup.className = 'byte-group';
+                    registerEl.appendChild(currentBitGroup);
+
+                    const b = i / 8;
+                    if (b < 8) {
+                        const segBlock = document.createElement('div');
+                        segBlock.className = 'byte-segment-block';
+                        segBlock.id = `byte-seg-block-${b}`;
+                        segBlock.innerHTML = `
+                            <div class="byte-segment-header">
+                                <span class="byte-title">BYTE ${b + 1}</span>
+                                <span class="byte-reward" style="color: var(--accent-green);">+${b + 1} Bytes</span>
+                            </div>
+                            <div class="byte-segment-bar-bg">
+                                <div class="byte-segment-fill" id="byte-seg-fill-${b}"></div>
+                            </div>
+                            <div class="byte-segment-status" id="byte-seg-status-${b}" style="font-family: var(--font-mono); font-size: 0.68rem; color: var(--text-muted); margin-top: 4px; display: flex; justify-content: space-between;">
+                                <span>0 / 8 Bits</span>
+                                <span id="byte-seg-pct-${b}">0%</span>
+                            </div>
+                        `;
+                        progressBarEl.appendChild(segBlock);
+                        byteSegmentBlocks.push(segBlock);
+                    }
+                }
+
+                const bit = document.createElement('div');
+                bit.className = 'bit';
+                currentBitGroup.appendChild(bit);
+                bitElements.push(bit);
+            }
+        }
+
+        function updateUI() {
+            const clockSpeed = game.getClockSpeed();
+
+            // 1. Render Bits & Reset Fade Effect
+            if (game.isResetting) {
+                registerEl.classList.add('resetting');
+            } else {
+                registerEl.classList.remove('resetting');
+            }
+
+            for (let i = 0; i < 65; i++) {
+                const isOwned = i < game.ownedBits;
+                const bitVal = isOwned && (game.register & (1n << BigInt(i))) !== 0n;
+                const hasCharger = game.bitChargers[i];
+                const charge = game.bitCharge[i];
+
+                // Anti-flicker check: calculate bit toggle frequency (Hz)
+                const bitToggleHz = (clockSpeed * Number(game.pulseDelta)) / Math.pow(2, i + 1);
+                const bitEl = bitElements[i];
+
+                if (!isOwned) {
+                    bitEl.classList.add('unowned');
+                    bitEl.classList.remove('active', 'flicker-blur', 'charged-border', 'charge-low');
+                    bitEl.style.removeProperty('background-color');
+                    bitEl.style.removeProperty('border-color');
+                    bitEl.style.removeProperty('box-shadow');
+                    bitEl.innerHTML = '';
+                    bitEl.title = `Bit ${i + 1}: Unowned`;
+                } else if (bitVal && game.power > 0 && bitToggleHz > 30) {
+                    bitEl.classList.remove('unowned', 'active', 'charge-low');
+                    bitEl.classList.add('flicker-blur');
+                    bitEl.style.removeProperty('background-color');
+                    bitEl.style.removeProperty('border-color');
+                    bitEl.style.removeProperty('box-shadow');
+                    if (hasCharger) {
+                        bitEl.classList.add('charged-border');
+                        bitEl.innerHTML = '<span class="charger-badge">⚡</span>';
+                        bitEl.title = `Bit ${i + 1}: High-Frequency Mode (>30Hz) ⚡ Protected by Dedicated Refresh Circuit`;
+                    } else {
+                        bitEl.classList.remove('charged-border');
+                        bitEl.innerHTML = '';
+                        bitEl.title = `Bit ${i + 1}: High-Frequency Anti-Flicker Mode (>30Hz)`;
+                    }
+                } else if (bitVal && game.power > 0) {
+                    bitEl.classList.remove('unowned', 'flicker-blur');
+                    if (hasCharger) {
+                        bitEl.classList.add('charged-border');
+                    } else {
+                        bitEl.classList.remove('charged-border');
+                    }
+
+                    bitEl.classList.add('active');
+
+                    // Smooth ON Cyan (188°) -> Amber Yellow (38°) -> Warning Red (0°) HSL LERP
+                    let hue = 188; // ON Cyan
+                    if (charge >= 0.5) {
+                        const t = (charge - 0.5) / 0.5;
+                        hue = Math.round(38 + t * 150); // LERP 38° (Yellow) to 188° (ON Cyan)
+                    } else {
+                        const t = Math.max(0, charge) / 0.5;
+                        hue = Math.round(t * 38); // LERP 0° (Red) to 38° (Yellow)
+                    }
+
+                    bitEl.style.setProperty('--bit-hue', `${hue}`);
+
+                    if (charge < 0.20) {
+                        bitEl.classList.add('charge-low'); // Low-battery warning pulse
+                    } else {
+                        bitEl.classList.remove('charge-low');
+                    }
+
+                    bitEl.innerHTML = hasCharger ? '<span class="charger-badge">⚡</span>' : '';
+
+                    const pct = (charge * 100).toFixed(1);
+                    const secLeft = (charge * game.retentionTime).toFixed(1);
+                    const chargerStr = hasCharger ? ' ⚡ Protected by Dedicated Refresh Circuit' : '';
+                    bitEl.title = `Bit ${i + 1}: Active (Charge: ${pct}% | Decay in ${secLeft}s)${chargerStr}`;
+                } else {
+                    bitEl.classList.remove('unowned', 'active', 'flicker-blur', 'charge-low');
+                    bitEl.style.removeProperty('background-color');
+                    bitEl.style.removeProperty('border-color');
+                    bitEl.style.removeProperty('box-shadow');
+                    if (hasCharger) {
+                        bitEl.classList.add('charged-border');
+                        bitEl.innerHTML = '<span class="charger-badge">⚡</span>';
+                        bitEl.title = `Bit ${i + 1}: Off ⚡ Standby Dedicated Refresh Circuit`;
+                    } else {
+                        bitEl.classList.remove('charged-border');
+                        bitEl.innerHTML = '';
+                        const reason = game.power <= 0 ? ' (Power Empty / Brownout)' : ' (0% Charge / Inactive)';
+                        bitEl.title = `Bit ${i + 1}: Off${reason}`;
+                    }
+                }
+            }
+
+            // 1.5 Format and Render Hardware Power Grid Battery Graphic
+            const powerPct = Math.max(0, Math.min(100, (game.power / game.maxPower) * 100));
+            document.getElementById('stat-power-val').innerText = `${game.power.toFixed(1)} / ${game.maxPower.toFixed(1)} Units`;
+
+            const batteryFillEl = document.getElementById('battery-fill');
+            if (batteryFillEl) {
+                batteryFillEl.style.width = `${powerPct.toFixed(1)}%`;
+                if (powerPct <= 0) {
+                    batteryFillEl.style.background = '#ef4444';
+                    document.getElementById('stat-power-status').innerText = '🚨 BROWNOUT (POWER EMPTY)';
+                    document.getElementById('stat-power-status').style.color = 'var(--accent-red)';
+                } else if (powerPct <= 20) {
+                    batteryFillEl.style.background = '#ef4444';
+                    document.getElementById('stat-power-status').innerText = '⚠️ CRITICAL POWER (< 20%)';
+                    document.getElementById('stat-power-status').style.color = 'var(--accent-red)';
+                } else if (powerPct <= 50) {
+                    batteryFillEl.style.background = '#f59e0b';
+                    document.getElementById('stat-power-status').innerText = '⚡ CAPACITY MODERATE';
+                    document.getElementById('stat-power-status').style.color = 'var(--accent-yellow)';
+                } else {
+                    batteryFillEl.style.background = 'linear-gradient(90deg, #10b981, #3b82f6)';
+                    document.getElementById('stat-power-status').innerText = '[GRID STABLE]';
+                    document.getElementById('stat-power-status').style.color = 'var(--accent-green)';
+                }
+            }
+
+            const activeChargerIdx = game.bitChargers.findIndex((c, idx) => c && idx < game.ownedBits);
+            const chargerDrain = activeChargerIdx !== -1 ? 1.0 * (activeChargerIdx + 1) : 0.0;
+            const clockDrain = Math.max(0, game.powerDrainRate - chargerDrain);
+            const chargerLabel = activeChargerIdx !== -1 ? `Bit ${activeChargerIdx + 1} Charger (-${chargerDrain.toFixed(2)}/s)` : `Charger (-0.00/s)`;
+
+            document.getElementById('stat-power-drain').innerText = `⏱️ Net Drain: -${game.powerDrainRate.toFixed(2)} Units/sec (Charger: -${chargerDrain.toFixed(2)}/s, Clock: -${clockDrain.toFixed(2)}/s)`;
+
+            const powerBreakdownEl = document.getElementById('stat-power-breakdown');
+            if (powerBreakdownEl) {
+                powerBreakdownEl.innerText = `⚡ Sources: ${chargerLabel} | Clock (-${clockDrain.toFixed(2)}/s)`;
+            }
+            const powerNetEl = document.getElementById('stat-power-net-summary');
+            if (powerNetEl) {
+                powerNetEl.innerText = `Net: -${game.powerDrainRate.toFixed(2)}/s`;
+            }
+
+            // Auto-Invest UI state
+            const toggleInvestBtn = document.getElementById('btn-toggle-invest-power');
+            if (toggleInvestBtn) {
+                toggleInvestBtn.innerText = game.autoInvestPowerEnabled ? "ON" : "OFF";
+                toggleInvestBtn.style.borderColor = game.autoInvestPowerEnabled ? "var(--accent-green)" : "var(--border-color)";
+                toggleInvestBtn.style.color = game.autoInvestPowerEnabled ? "var(--accent-green)" : "var(--text-muted)";
+            }
+
+            const modeBtn = document.getElementById('btn-toggle-invest-mode');
+            if (modeBtn) {
+                if (game.autoInvestMode === 'fill') {
+                    modeBtn.innerText = "MODE: FULL REFILL";
+                    modeBtn.style.borderColor = "var(--accent-green)";
+                    modeBtn.style.color = "var(--accent-green)";
+                    modeBtn.title = "Fills power grid to 100% capacity using whole Bytes when power drops below threshold";
+                } else {
+                    modeBtn.innerText = "MODE: KEEP ABOVE MIN";
+                    modeBtn.style.borderColor = "var(--accent-cyan)";
+                    modeBtn.style.color = "var(--accent-cyan)";
+                    modeBtn.title = "Spends exactly 1 Byte whenever power drops below threshold to stay above minimum";
+                }
+            }
+
+            // 1.6 Render Graphic Thermometer & Thermal Stats
+            const tempPct = Math.max(0, Math.min(100, ((game.temp - game.ambientTemp) / (game.maxTemp - game.ambientTemp)) * 100));
+            document.getElementById('stat-temp-val').innerText = `${game.temp.toFixed(1)}°C / 100.0°C`;
+
+            const tempFillEl = document.getElementById('temp-fill');
+            if (tempFillEl) {
+                tempFillEl.style.width = `${tempPct.toFixed(1)}%`;
+            }
+
+            // Thermal Heat & Cooling Breakdown readouts above bar
+            const bitsActive = Number(game.getSetBitCount());
+            const bitHeat = bitsActive * 0.05;
+            const clockHeat = clockSpeed > 0 ? 1.50 * Math.log2(1.0 + clockSpeed) : 0.0;
+
+            const fanCoolingPerFan = 8.0 + (game.shop.fanPower.level * 4.0);
+            const fanCooling = (game.shop.coolingFan.level * fanCoolingPerFan);
+            const waterCoolingRate = game.shop.waterCooling.level > 0 ? (40.0 * game.shop.waterCooling.level) : 0.0;
+            const baseDissipation = 5.0; // Air cooling
+
+            const tempGenEl = document.getElementById('stat-temp-gen-breakdown');
+            if (tempGenEl) {
+                tempGenEl.innerText = `🔥 Heat In: Bits (+${bitHeat.toFixed(2)}°C/s) | Clock (+${clockHeat.toFixed(2)}°C/s)`;
+            }
+            const tempCoolEl = document.getElementById('stat-temp-cool-breakdown');
+            if (tempCoolEl) {
+                const totalCoolingStr = (fanCooling + waterCoolingRate) > 0 ? ` | Fans/Loop (-${(fanCooling + waterCoolingRate).toFixed(1)}°C/s)` : '';
+                tempCoolEl.innerText = `❄️ Cooling: Air (-${baseDissipation.toFixed(1)}°C/s)${totalCoolingStr}`;
+            }
+
+            const tempStatusEl = document.getElementById('stat-temp-status');
+            if (game.isShutdown) {
+                tempStatusEl.innerText = '🔥 SHUTDOWN (MELTDOWN @ 100°C)';
+                tempStatusEl.style.color = 'var(--accent-red)';
+            } else if (game.temp >= 80.0) {
+                tempStatusEl.innerText = '🔥 CRITICAL OVERHEAT (-80% Clock)';
+                tempStatusEl.style.color = 'var(--accent-red)';
+            } else if (game.temp >= 60.0) {
+                tempStatusEl.innerText = '⚠️ THROTTLING (-50% Clock)';
+                tempStatusEl.style.color = 'var(--accent-yellow)';
+            } else {
+                tempStatusEl.innerText = '[OPTIMAL THERMALS]';
+                tempStatusEl.style.color = 'var(--accent-green)';
+            }
+
+            const netHeatStr = game.netHeatRate >= 0 ? `+${game.netHeatRate.toFixed(1)}` : game.netHeatRate.toFixed(1);
+            document.getElementById('stat-temp-heat').innerText = `🔥 Net Heat: ${netHeatStr}°C/sec`;
+
+            const coolantBtn = document.getElementById('btn-inject-coolant');
+            if (coolantBtn) {
+                coolantBtn.disabled = game.bytes < 1n || game.temp <= game.ambientTemp;
+            }
+
+            // Auto-Cooling Bytes UI state
+            const toggleCoolingBtn = document.getElementById('btn-toggle-auto-cooling');
+            if (toggleCoolingBtn) {
+                toggleCoolingBtn.innerText = game.autoCoolantEnabled ? "ON" : "OFF";
+                toggleCoolingBtn.style.borderColor = game.autoCoolantEnabled ? "#38bdf8" : "var(--border-color)";
+                toggleCoolingBtn.style.color = game.autoCoolantEnabled ? "#38bdf8" : "var(--text-muted)";
+            }
+
+            const coolingModeBtn = document.getElementById('btn-toggle-cooling-mode');
+            if (coolingModeBtn) {
+                if (game.autoCoolantMode === 'fill') {
+                    coolingModeBtn.innerText = "MODE: FULL CHILL (20°C)";
+                    coolingModeBtn.style.borderColor = "#38bdf8";
+                    coolingModeBtn.style.color = "#38bdf8";
+                    coolingModeBtn.title = "Spends necessary Bytes to cool CPU back down to 20°C ambient temperature";
+                } else {
+                    coolingModeBtn.innerText = "MODE: TARGET THRESHOLD";
+                    coolingModeBtn.style.borderColor = "#38bdf8";
+                    coolingModeBtn.style.color = "#38bdf8";
+                    coolingModeBtn.title = "Spends 1 Byte (-25°C) whenever temperature exceeds target threshold";
+                }
+            }
+
+            // 2. Format and Render Consolidated Currencies & Byte Store Claim Button
+            document.getElementById('stat-cycles-val').innerText = formatter.format(game.cycles);
+            document.getElementById('stat-bytes-val').innerText = formatter.format(game.bytes);
+
+            const claimBtn = document.getElementById('btn-collect-bytes');
+            if (claimBtn) {
+                if (game.pendingBytes > 0n) {
+                    claimBtn.innerText = `📦 CLAIM +${formatter.format(game.pendingBytes)} BYTES`;
+                    claimBtn.style.borderColor = "var(--accent-green)";
+                    claimBtn.style.color = "var(--accent-green)";
+                    claimBtn.style.background = "rgba(16, 185, 129, 0.2)";
+                    claimBtn.style.boxShadow = "0 0 10px rgba(16, 185, 129, 0.5)";
+                    claimBtn.disabled = false;
+                } else {
+                    claimBtn.innerText = `📦 STORE: 0 Bytes`;
+                    claimBtn.style.borderColor = "var(--panel-border)";
+                    claimBtn.style.color = "var(--text-muted)";
+                    claimBtn.style.background = "transparent";
+                    claimBtn.style.boxShadow = "none";
+                    claimBtn.disabled = true;
+                }
+            }
+
+            document.getElementById('stat-crystals-val').innerText = `${game.crystals} ${game.crystals === 1 ? 'Crystal' : 'Crystals'}`;
+
+            const isPrestigeRevealed = game.hasPrestiged;
+            const crystalCard = document.getElementById('currency-card-crystals');
+            if (crystalCard) {
+                crystalCard.style.display = isPrestigeRevealed ? 'flex' : 'none';
+            }
+
+            const pctPerSec = 1 + game.shop.crystalPower.level;
+            document.getElementById('stat-crystal-potency').innerText = `${pctPerSec}%/sec (Lvl ${game.shop.crystalPower.level} Crystal Power)`;
+
+            // 3. Format Readouts
+            document.getElementById('stat-register-val').innerText = formatter.format(game.register);
+            document.getElementById('stat-pulse-val').innerText = `+${formatter.format(game.pulseDelta)} ${game.pulseDelta === 1n ? 'Bit' : 'Bits'}`;
+
+            const throttleTemp = game.shop.waterCooling.level > 0 ? 85.0 : 60.0;
+            const isThrottled = game.temp > throttleTemp;
+            const clockValEl = document.getElementById('stat-clock-val');
+
+            if (game.power <= 0.0) {
+                clockValEl.innerText = "0.00 Hz (BROWNOUT)";
+                clockValEl.style.color = "var(--accent-red)";
+                document.getElementById('stat-clock-subtext').innerText = "🚨 Power Empty - Recharge Grid in Dev Tools";
+                document.getElementById('stat-crystal-delta').innerText = "+0.00 Hz";
+            } else if (game.isShutdown) {
+                clockValEl.innerText = "0.00 Hz (MELTDOWN SHUTDOWN)";
+                clockValEl.style.color = "var(--accent-red)";
+                document.getElementById('stat-clock-subtext').innerText = "🔥 Emergency Thermal Shutdown (Cool below 70°C)";
+                document.getElementById('stat-crystal-delta').innerText = "+0.00 Hz";
+            } else if (game.shop.clock.level === 0) {
+                clockValEl.innerText = "0.00 Hz (Manual Only)";
+                clockValEl.style.color = "var(--text-main)";
+                document.getElementById('stat-clock-subtext').innerText = "Buy 'Clock (1 Hz)' in Shop to enable auto-generation";
+                document.getElementById('stat-crystal-delta').innerText = "+0.00 Hz";
+            } else {
+                clockValEl.style.color = "var(--text-main)";
+                const baseHz = Math.pow(2, game.shop.clock.level - 1).toFixed(0);
+                const throttleStr = isThrottled ? ` (THROTTLED @ ${game.temp.toFixed(1)}°C)` : '';
+                clockValEl.innerText = `${clockSpeed.toFixed(2)} Hz${throttleStr}`;
+                document.getElementById('stat-clock-subtext').innerText = `Base ${baseHz} Hz × 1.00`;
+
+                const unboostedHz = Math.pow(2, game.shop.clock.level - 1) * game.clockMultiplier;
+                const deltaHz = Math.max(0, clockSpeed - unboostedHz);
+                document.getElementById('stat-crystal-delta').innerText = `+${deltaHz.toFixed(2)} Hz`;
+            }
+
+            // 4. Render 8 Cascading Byte Segment Progress Generators (G1..G8)
+            for (let b = 0; b < 8; b++) {
+                const targetBits = (b + 1) * 8;
+                const isOwned = (b * 8) < game.ownedBits;
+                const blockEl = byteSegmentBlocks[b];
+                const fillEl = document.getElementById(`byte-seg-fill-${b}`);
+                const statusEl = document.getElementById(`byte-seg-status-${b}`);
+
+                if (!blockEl) continue;
+
+                if (!isOwned) {
+                    blockEl.className = 'byte-segment-block unowned';
+                    if (fillEl) fillEl.style.width = '0%';
+                    if (statusEl) statusEl.innerHTML = `<span>Unowned</span><span>-</span>`;
+                    continue;
+                }
+
+                // Calculate rollover frequency for Generator b to detect Excessive High Frequency
+                const genRolloverHz = (clockSpeed * Number(game.pulseDelta)) / Math.pow(2, 8 * (b + 1));
+                const bytesPerSec = genRolloverHz * (b + 1);
+
+                if (genRolloverHz > 30) {
+                    // Excessive High-Frequency Mode: Stop step progress bar and display auto-calculate mode!
+                    blockEl.className = 'byte-segment-block high-freq-generator';
+                    if (fillEl) fillEl.style.width = '100%';
+                    if (statusEl) {
+                        statusEl.innerHTML = `<span style="color: #38bdf8; font-weight: bold;">⚡ HIGH FREQUENCY</span><span style="color: #38bdf8; font-weight: bold;">+${formatter.format(BigInt(Math.floor(bytesPerSec)))} B/sec</span>`;
+                    }
+                    continue;
+                }
+
+                const latchedBits = game.generatorLatched[b] || 0;
+                const pct = (latchedBits / 8) * 100;
+
+                if (latchedBits >= 8) {
+                    blockEl.className = 'byte-segment-block segment-completed';
+                    if (fillEl) fillEl.style.width = '100%';
+                    if (statusEl) {
+                        statusEl.innerHTML = `<span style="color: var(--accent-green); font-weight: bold;">⚡ COMPLETED</span><span style="color: var(--accent-green); font-weight: bold;">+${b + 1} Bytes in Store</span>`;
+                    }
+                } else {
+                    blockEl.className = 'byte-segment-block';
+                    if (fillEl) fillEl.style.width = `${pct.toFixed(1)}%`;
+                    if (statusEl) {
+                        statusEl.innerHTML = `<span>${latchedBits} / 8 Bits (${targetBits} Bits Target)</span><span>${pct.toFixed(0)}%</span>`;
+                    }
+                }
+            }
+
+            document.getElementById('progress-milestone-label').innerText = `Continuous Byte Milestones: Byte 1 (+1 B) | Byte 2 (+2 B) | Byte 3 (+3 B) | Byte 4 (+4 B) ...`;
+            registerEl.style.setProperty('--reset-duration', `${game.resetDuration}s`);
+            const maxReg = game.getMaxRegister();
+            const curReg = game.register;
+            const footerContent = document.getElementById('register-footer-content');
+
+            if (game.isResetting) {
+                footerContent.innerHTML = `<span style="color: var(--accent-yellow); font-weight: bold;">⚠️ Resetting in ${game.resetTimer.toFixed(1)} seconds...</span>`;
+            } else if (curReg >= maxReg) {
+                footerContent.innerHTML = `<span style="color: var(--accent-green); font-weight: bold;">⚡ Hardware Cap Reached (All Bits Set)</span>`;
+            } else if (clockSpeed <= 0) {
+                footerContent.innerHTML = `<span style="color: var(--text-muted);">⏱️ Time until all bits are set: --:--:-- (Manual Only)</span>`;
+            } else {
+                const remReg = maxReg - curReg;
+                const bitsPerSec = clockSpeed * Number(game.pulseDelta);
+                const secsRemaining = Number(remReg) / bitsPerSec;
+                footerContent.innerHTML = `<span>⏱️ Time until all bits are set:</span> <strong class="highlight-cyan">${formatTimeRemaining(secsRemaining)}</strong>`;
+            }
+
+            // 4. Control Action Button States
+            const maxedOut = game.isMaxedOut();
+            const resetting = game.isResetting;
+
+            document.getElementById('btn-manual-pulse').disabled = maxedOut || resetting;
+            if (resetting) {
+                document.getElementById('manual-pulse-subtext').innerText = `Resetting... (${game.resetTimer.toFixed(1)}s)`;
+            } else if (maxedOut) {
+                document.getElementById('manual-pulse-subtext').innerText = 'CAP REACHED (Reset/Buy Bit)';
+            } else {
+                document.getElementById('manual-pulse-subtext').innerText = `+1 Bit | Cap: ${formatter.format(game.getMaxRegister())}`;
+            }
+
+            document.getElementById('btn-reset-reg').disabled = resetting;
+
+            const canBuy = game.canBuyBit();
+            document.getElementById('btn-buy-bit').disabled = !canBuy;
+            document.getElementById('buy-bit-title').innerText = game.ownedBits < 65 ? `Unlock Bit ${game.ownedBits + 1}` : 'All Bits Unlocked';
+            document.getElementById('buy-bit-subtext').innerText = game.ownedBits < 65 ? `Cost: ${formatter.format(game.getBitCost())} Cycles` : 'Max Bits Reached';
+
+            const canPrestige = game.canPrestige();
+            const prestigeReward = game.getPrestigeReward();
+            document.getElementById('btn-prestige').disabled = !canPrestige;
+
+            if (!canPrestige) {
+                document.getElementById('prestige-subtext').innerText = `Requires Byte Boundary (${game.ownedBits < 8 ? 'Min Bit 8' : 'Fill Lower 8, 16, 24... Bits'})`;
+            } else if (prestigeReward.capped) {
+                document.getElementById('prestige-subtext').innerText = `TIER CAPPED (+0 Crystals at Bit ${prestigeReward.tier})`;
+            } else {
+                document.getElementById('prestige-subtext').innerText = `+${prestigeReward.yield} ${prestigeReward.yield === 1 ? 'Crystal' : 'Crystals'} (${prestigeReward.remaining} Left in Bit ${prestigeReward.tier} Pool)`;
+            }
+
+            document.getElementById('bit-count-label').innerText = `Owned Bits: ${game.ownedBits} / 65 | Cap: ${formatter.format(game.getMaxRegister())}`;
+
+            // 5. Render Shop UI
+            renderShopUI();
+        }
+
+        function renderShopUI() {
+            const statusLabel = document.getElementById('shop-status-label');
+            const shopGrid = document.getElementById('shop-grid');
+            const isPrestigeRevealed = game.hasPrestiged;
+
+            statusLabel.innerText = "Unlocked & Available";
+            let html = '';
+
+            // Dedicated Refresh Circuits Control Card
+            if (game.ownedBits >= 1) {
+                let chargerBtnsHtml = '';
+                for (let b = 1; b <= game.ownedBits; b++) {
+                    const isOwnedCharger = game.bitChargers[b - 1];
+                    const cost = game.getBitChargerCost(b);
+                    const canAfford = game.canBuyBitCharger(b);
+                    const standby = (1.0 * b).toFixed(1);
+                    const pulse = 10 * b;
+                    if (isOwnedCharger) {
+                        chargerBtnsHtml += `<button class="shop-btn purchase-btn" onclick="game.buyBitCharger(${b})" style="border-color: var(--accent-yellow); color: var(--accent-yellow);">Bit ${b} ⚡ ACTIVE (-${standby}/s, -${pulse} Pulse)</button>`;
+                    } else {
+                        chargerBtnsHtml += `<button class="shop-btn" onclick="game.buyBitCharger(${b})" ${!canAfford ? 'disabled' : ''}>Bit ${b} (-${standby}/s, -${pulse} Pulse | ${formatter.format(cost)} Cycles)</button>`;
+                    }
+                }
+
+                html += `
+                    <div class="shop-item" style="grid-column: 1 / -1; border-color: var(--accent-yellow); background: rgba(245, 158, 11, 0.05);">
+                        <div>
+                            <div class="shop-item-header">
+                                <span class="shop-title" style="color: var(--accent-yellow);">⚡ Dedicated Refresh Circuits</span>
+                                <span class="shop-level" style="color: var(--accent-yellow); font-weight: bold;">[Capacitor Protection]</span>
+                            </div>
+                            <div class="shop-desc" style="margin-top: 4px;">Installs a dedicated refresh circuit on ONE bit (Only 1 active. Draws 1×Bit Number Power/sec standby + 10×Bit Number Power per recharge pulse).</div>
+                        </div>
+                        <div style="display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; max-height: 120px; overflow-y: auto;">
+                            ${chargerBtnsHtml}
+                        </div>
+                    </div>`;
+            }
+
+            // Auto Prestige Target Control Card (Unlocked when Bit 16 reached)
+            if (game.hasReachedBit16) {
+                const targetText = game.autoPrestigeTarget > 0 ? `Bit ${game.autoPrestigeTarget}` : 'OFF';
+                html += `
+                    <div class="shop-item" style="grid-column: 1 / -1; border-color: var(--accent-yellow);">
+                        <div>
+                            <div class="shop-item-header">
+                                <span class="shop-title" style="color: var(--accent-yellow);">🔄 Auto Prestige Target & Crystal Pools</span>
+                                <span class="shop-level" style="color: var(--accent-yellow); font-weight: bold;">[Active: ${targetText}]</span>
+                            </div>
+                            <div class="shop-desc" style="margin-top: 4px;">Select byte boundary for Auto-Prestige. Shows remaining crystal pool per tier.</div>
+                        </div>
+                        <div style="display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap;">
+                            <button class="shop-btn ${game.autoPrestigeTarget === 0 ? 'purchase-btn' : ''}" onclick="game.setAutoPrestigeTarget(0)">OFF</button>
+                            <button class="shop-btn ${game.autoPrestigeTarget === 8 ? 'purchase-btn' : ''}" onclick="game.setAutoPrestigeTarget(8)">
+                                Bit 8 (${game.getTierRemainingCrystals(8)} Left)
+                            </button>
+                            <button class="shop-btn ${game.autoPrestigeTarget === 16 ? 'purchase-btn' : ''}" onclick="game.setAutoPrestigeTarget(16)">
+                                Bit 16 (${game.getTierRemainingCrystals(16)} Left)
+                            </button>
+                            ${game.ownedBits >= 24 ? `<button class="shop-btn ${game.autoPrestigeTarget === 24 ? 'purchase-btn' : ''}" onclick="game.setAutoPrestigeTarget(24)">Bit 24 (${game.getTierRemainingCrystals(24)} Left)</button>` : ''}
+                            ${game.ownedBits >= 32 ? `<button class="shop-btn ${game.autoPrestigeTarget === 32 ? 'purchase-btn' : ''}" onclick="game.setAutoPrestigeTarget(32)">Bit 32 (${game.getTierRemainingCrystals(32)} Left)</button>` : ''}
+                        </div>
+                    </div>`;
+            }
+            for (const key in game.shop) {
+                if (key === 'crystalPower' && !isPrestigeRevealed) {
+                    continue; // Hide Crystal Power item until first Prestige is revealed
+                }
+                const item = game.shop[key];
+                const cost = game.getShopCost(key);
+                const canAfford = game.canBuyShopItem(key);
+                const isPurchased = item.level > 0;
+                const currencyName = item.currency === 'bytes' ? 'Bytes' : 'Cycles';
+
+                const btnText = isPurchased ?
+                    `Upgrade Lvl ${item.level + 1} (${formatter.format(cost)} ${currencyName})` :
+                    `Purchase (${formatter.format(cost)} ${currencyName})`;
+
+                if (key === 'autoReset' && isPurchased) {
+                    const curDuration = game.getResetDuration().toFixed(1);
+                    const toggleBtnText = game.autoResetEnabled ? 'STATUS: ON' : 'STATUS: OFF';
+                    const toggleClass = game.autoResetEnabled ? 'purchase-btn' : '';
+
+                    html += `
+                        <div class="shop-item">
+                            <div>
+                                <div class="shop-item-header">
+                                    <span class="shop-title">${item.name}</span>
+                                    <span class="shop-level">Lvl ${item.level} (${curDuration}s Reset)</span>
+                                </div>
+                                <div class="shop-desc" style="margin-top: 4px;">Reduces fade reset duration by 0.2s per level (Current: ${curDuration}s).</div>
+                            </div>
+                            <div style="display: flex; gap: 6px; align-items: center; margin-top: 6px;">
+                                <button class="shop-btn ${toggleClass}" onclick="game.toggleAutoReset()">${toggleBtnText}</button>
+                                <button class="shop-btn" onclick="game.buyShopItem('${key}')" ${!canAfford ? 'disabled' : ''}>
+                                    ${btnText}
+                                </button>
+                            </div>
+                        </div>`;
+                    continue;
+                }
+
+                const currentHzText = key === 'clock' ? (isPurchased ? ` (Base ${Math.pow(2, item.level - 1)} Hz)` : '') : '';
+                const levelBadge = isPurchased ?
+                    `<span class="shop-level">Lvl ${item.level}${currentHzText}</span>` :
+                    `<span class="shop-level" style="color: var(--text-muted);">[Not Owned]</span>`;
+
+                const desc = item.desc;
+
+                html += `
+                    <div class="shop-item ${!isPurchased ? 'not-owned' : ''}">
+                        <div>
+                            <div class="shop-item-header">
+                                <span class="shop-title">${item.name}</span>
+                                ${levelBadge}
+                            </div>
+                            <div class="shop-desc" style="margin-top: 4px;">${desc}</div>
+                        </div>
+                        <button class="shop-btn ${!isPurchased ? 'purchase-btn' : ''}" onclick="game.buyShopItem('${key}')" ${!canAfford ? 'disabled' : ''}>
+                            ${btnText}
+                        </button>
+                    </div>`;
+            }
+            if (shopGrid.dataset.lastHtml !== html) {
+                shopGrid.innerHTML = html;
+                shopGrid.dataset.lastHtml = html;
+            }
+        }
+
+        function toggleAutoInvestPower() {
+            game.autoInvestPowerEnabled = !game.autoInvestPowerEnabled;
+            updateUI();
+        }
+
+        function updateInvestPowerThreshold(val) {
+            const threshold = parseFloat(val) || 800.0;
+            game.autoInvestThreshold = threshold;
+            const labelEl = document.getElementById('invest-power-rate-label');
+            if (labelEl) {
+                labelEl.innerText = `${threshold.toFixed(0)} Units (Whole Bytes)`;
+            }
+            updateUI();
+        }
+
+        function openPrestigeModal() {
+            if (!game.canPrestige()) return;
+            if (game.suppressPrestigeModal) {
+                confirmPrestige();
+                return;
+            }
+            const modal = document.getElementById('prestige-modal-overlay');
+            const reward = game.getPrestigeReward();
+            const rewardValEl = modal.querySelector('.reward-value');
+            const rewardSubtextEl = modal.querySelector('.reward-subtext');
+
+            if (rewardValEl) {
+                rewardValEl.innerText = reward.capped ? `+0 Crystals (Tapped Out)` : `+${reward.yield} ${reward.yield === 1 ? 'Crystal' : 'Crystals'}`;
+            }
+            if (rewardSubtextEl) {
+                rewardSubtextEl.innerText = reward.capped ?
+                    `Bit ${reward.tier} Cap Reached (${reward.earned} / ${reward.cap} Crystals). Reach higher bit tier for more crystals!` :
+                    `Bit ${reward.tier} Tier (${reward.remaining} / ${reward.cap} Crystals Remaining in Pool)`;
+            }
+
+            if (modal) modal.classList.add('open');
+        }
+
+        function closePrestigeModal() {
+            const modal = document.getElementById('prestige-modal-overlay');
+            if (modal) modal.classList.remove('open');
+        }
+
+        function confirmPrestige() {
+            const chk = document.getElementById('modal-suppress-checkbox');
+            if (chk && chk.checked) {
+                game.suppressPrestigeModal = true;
+            }
+            if (game.executePrestige()) {
+                closePrestigeModal();
+                updateUI();
+            }
+        }
+
+        function openBit16Modal() {
+            const modal = document.getElementById('bit16-modal-overlay');
+            if (modal) modal.classList.add('open');
+        }
+
+        function closeBit16Modal() {
+            const modal = document.getElementById('bit16-modal-overlay');
+            if (modal) modal.classList.remove('open');
+        }
+
+        function toggleDevPanel() {
+            const panel = document.getElementById('dev-panel');
+            panel.classList.toggle('open');
+            if (panel.classList.contains('open')) {
+                loadPresetFormFromSelection();
+            }
+        }
+
+        // =========================================================================
+        // DEV TEST PRESETS & LOCALSTORAGE MANAGEMENT
+        // =========================================================================
+        const DEFAULT_TEST_PRESETS = [
+            {
+                id: "preset-1",
+                name: "Preset 1: 8-Bit Auto-Prestige Test",
+                ownedBits: 8,
+                register: "255",
+                autoPrestigeTarget: 8,
+                crystals: 20,
+                crystalPowerLevel: 4,
+                clockLevel: 2
+            },
+            {
+                id: "preset-2",
+                name: "Preset 2: 16-Bit Mid-Game Scenario",
+                ownedBits: 16,
+                register: "65535",
+                autoPrestigeTarget: 16,
+                crystals: 50,
+                crystalPowerLevel: 8,
+                clockLevel: 4
+            },
+            {
+                id: "preset-3",
+                name: "Preset 3: 32-Bit Endgame Overclock",
+                ownedBits: 32,
+                register: "4294967295",
+                autoPrestigeTarget: 32,
+                crystals: 150,
+                crystalPowerLevel: 15,
+                clockLevel: 8
+            }
+        ];
+
+        function getTestPresets() {
+            try {
+                const saved = localStorage.getItem('binary_game_dev_presets');
+                if (saved) return JSON.parse(saved);
+            } catch (e) { }
+            return JSON.parse(JSON.stringify(DEFAULT_TEST_PRESETS));
+        }
+
+        function saveTestPresetsToStorage(presets) {
+            try {
+                localStorage.setItem('binary_game_dev_presets', JSON.stringify(presets));
+            } catch (e) { }
+        }
+
+        function loadPresetFormFromSelection() {
+            const selector = document.getElementById('preset-selector');
+            if (!selector) return;
+            const index = Number(selector.value);
+            const presets = getTestPresets();
+            const config = presets[index] || DEFAULT_TEST_PRESETS[0];
+
+            document.getElementById('cfg-owned-bits').value = config.ownedBits;
+            document.getElementById('cfg-register').value = config.register;
+            document.getElementById('cfg-auto-prestige').value = config.autoPrestigeTarget;
+            document.getElementById('cfg-crystals').value = config.crystals;
+            document.getElementById('cfg-power-lvl').value = config.crystalPowerLevel;
+            document.getElementById('cfg-clock-lvl').value = config.clockLevel;
+        }
+
+        function takeGameSnapshot() {
+            const selector = document.getElementById('preset-selector');
+            if (!selector) return;
+            const index = Number(selector.value);
+            const presets = getTestPresets();
+
+            const snapshotConfig = {
+                id: `preset-${index + 1}`,
+                name: selector.options[selector.selectedIndex].text,
+                ownedBits: game.ownedBits,
+                register: game.register.toString(),
+                autoPrestigeTarget: game.autoPrestigeTarget,
+                crystals: game.crystals,
+                crystalPowerLevel: game.shop.crystalPower.level,
+                clockLevel: game.shop.clock.level
+            };
+
+            document.getElementById('cfg-owned-bits').value = snapshotConfig.ownedBits;
+            document.getElementById('cfg-register').value = snapshotConfig.register;
+            document.getElementById('cfg-auto-prestige').value = snapshotConfig.autoPrestigeTarget;
+            document.getElementById('cfg-crystals').value = snapshotConfig.crystals;
+            document.getElementById('cfg-power-lvl').value = snapshotConfig.crystalPowerLevel;
+            document.getElementById('cfg-clock-lvl').value = snapshotConfig.clockLevel;
+
+            presets[index] = snapshotConfig;
+            saveTestPresetsToStorage(presets);
+
+            alert(`📸 Live game snapshot captured & saved into ${snapshotConfig.name}!`);
+        }
+
+        function saveActivePresetForm() {
+            const selector = document.getElementById('preset-selector');
+            if (!selector) return;
+            const index = Number(selector.value);
+            const presets = getTestPresets();
+
+            presets[index] = {
+                id: `preset-${index + 1}`,
+                name: selector.options[selector.selectedIndex].text,
+                ownedBits: Number(document.getElementById('cfg-owned-bits').value),
+                register: document.getElementById('cfg-register').value,
+                autoPrestigeTarget: Number(document.getElementById('cfg-auto-prestige').value),
+                crystals: Number(document.getElementById('cfg-crystals').value),
+                crystalPowerLevel: Number(document.getElementById('cfg-power-lvl').value),
+                clockLevel: Number(document.getElementById('cfg-clock-lvl').value)
+            };
+
+            saveTestPresetsToStorage(presets);
+            alert(`Saved ${presets[index].name} to LocalStorage!`);
+        }
+
+        function applyActivePresetForm() {
+            const selector = document.getElementById('preset-selector');
+            if (!selector) return;
+            const index = Number(selector.value);
+            const presets = getTestPresets();
+            const config = presets[index];
+            game.applyTestPreset(config);
+        }
+
+        function applyQuickTestMode(modeIndex) {
+            const presets = getTestPresets();
+            const config = presets[modeIndex] || DEFAULT_TEST_PRESETS[modeIndex];
+            game.applyTestPreset(config);
+        }
+
+        function resetDefaultPresets() {
+            saveTestPresetsToStorage(DEFAULT_TEST_PRESETS);
+            loadPresetFormFromSelection();
+            alert("Reset test presets to default settings!");
+        }
+
+        function makeDraggable(element, handle) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            handle.onmousedown = dragMouseDown;
+
+            function dragMouseDown(e) {
+                if (e.target.tagName === 'BUTTON' || e.target.getAttribute('onclick')) return;
+                e.preventDefault();
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+            }
+
+            function elementDrag(e) {
+                e.preventDefault();
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                element.style.bottom = 'auto';
+                element.style.right = 'auto';
+                element.style.top = Math.max(10, element.offsetTop - pos2) + "px";
+                element.style.left = Math.max(10, element.offsetLeft - pos1) + "px";
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+        }
+
+        makeDraggable(document.getElementById('dev-panel'), document.getElementById('dev-header'));
+
+        function toggleDevGroup(groupId) {
+            const content = document.getElementById(groupId);
+            const icon = document.getElementById(groupId + '-icon');
+            if (content) {
+                content.classList.toggle('collapsed');
+                if (icon) {
+                    icon.innerText = content.classList.contains('collapsed') ? '►' : '▼';
+                }
+            }
+        }
+
+        function toggleDevInfinitePower() {
+            game.devInfinitePower = !game.devInfinitePower;
+            if (game.devInfinitePower) {
+                game.power = game.maxPower;
+            }
+            const btn = document.getElementById('dev-btn-infinite-power');
+            if (btn) {
+                btn.innerText = `⚡ Infinite Power: ${game.devInfinitePower ? 'ON' : 'OFF'}`;
+                btn.style.borderColor = game.devInfinitePower ? 'var(--accent-green)' : 'var(--accent-cyan)';
+                btn.style.color = game.devInfinitePower ? 'var(--accent-green)' : 'var(--text-main)';
+            }
+            updateUI();
+        }
+
+        function toggleDevDisableHeat() {
+            game.devDisableHeat = !game.devDisableHeat;
+            if (game.devDisableHeat) {
+                game.temp = game.ambientTemp;
+                game.isShutdown = false;
+            }
+            const btn = document.getElementById('dev-btn-disable-heat');
+            if (btn) {
+                btn.innerText = `❄️ Disable Heat: ${game.devDisableHeat ? 'ON' : 'OFF'}`;
+                btn.style.borderColor = game.devDisableHeat ? 'var(--accent-green)' : '#38bdf8';
+                btn.style.color = game.devDisableHeat ? 'var(--accent-green)' : 'var(--text-main)';
+            }
+            updateUI();
+        }
+
+        function toggleAutoCooling() {
+            game.autoCoolantEnabled = !game.autoCoolantEnabled;
+            updateUI();
+        }
+
+        function updateAutoCoolingThreshold(val) {
+            game.autoCoolantThreshold = Number(val);
+            document.getElementById('auto-cooling-rate-label').innerText = `${game.autoCoolantThreshold.toFixed(1)}°C (Whole Bytes)`;
+        }
+
+        function toggleAutoInvestPower() {
+            game.autoInvestPowerEnabled = !game.autoInvestPowerEnabled;
+            updateUI();
+        }
+
+        function updateInvestPowerThreshold(val) {
+            game.autoInvestThreshold = Number(val);
+            document.getElementById('invest-power-rate-label').innerText = `${game.autoInvestThreshold} Units (Whole Bytes)`;
+        }
+
+        // Initialize and Start Main Loop
+        initRegisterUI();
+        let lastTime = performance.now();
+
+        function mainLoop(currentTime) {
+            const dt = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            game.tick(dt);
+            updateUI();
+
+            requestAnimationFrame(mainLoop);
+        }
+
+        requestAnimationFrame(mainLoop);
+    </script>
+</body>
+
+</html>

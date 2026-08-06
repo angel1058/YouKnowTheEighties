@@ -1,0 +1,1808 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BinaryV2 - Phase 0 Onboarding & Core Loop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(15, 23, 42, 0.85);
+            --panel-border: rgba(255, 255, 255, 0.1);
+            --accent-green: #10b981;
+            --accent-cyan: #38bdf8;
+            --accent-purple: #a855f7;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.1) 0px, transparent 50%);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 14px;
+            gap: 12px;
+        }
+
+        /* HEADER */
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            padding: 10px 18px;
+            backdrop-filter: blur(12px);
+        }
+
+        .title-badge {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            color: #fff;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 0.9rem;
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+
+        .app-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .power-btn {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(16, 185, 129, 0.2));
+            border: 1.5px solid var(--accent-cyan);
+            color: #fff;
+            font-family: var(--font-mono);
+            font-weight: 800;
+            font-size: 0.85rem;
+            padding: 8px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+        }
+
+        .power-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.6);
+        }
+
+        .power-btn.powered-on {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(245, 158, 11, 0.25));
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+        }
+
+        .power-btn.powered-on:hover {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.4), rgba(245, 158, 11, 0.4));
+            box-shadow: 0 0 25px rgba(239, 68, 68, 0.8);
+        }
+
+        /* RETRO VIDI-PRINTER / TTY MESSAGE BAR */
+        .vidi-printer {
+            background: #060913;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.8);
+            transition: border-color 0.3s ease;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .vidi-container {
+            overflow: hidden;
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+
+        .vidi-badge {
+            background: rgba(56, 189, 248, 0.15);
+            border: 1px solid var(--accent-cyan);
+            color: var(--accent-cyan);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 0.7rem;
+            letter-spacing: 1px;
+            white-space: nowrap;
+            z-index: 2;
+        }
+
+        .vidi-text {
+            color: var(--text-main);
+            line-height: 1.4;
+            white-space: nowrap;
+            display: inline-block;
+            will-change: transform, color;
+        }
+
+        .vidi-text.tty-scroll {
+            animation: ttySlideYellowToWhite 2.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+
+        @keyframes ttySlideYellowToWhite {
+            0% {
+                transform: translateX(100%);
+                color: var(--accent-yellow);
+                text-shadow: 0 0 12px rgba(245, 158, 11, 0.9);
+            }
+
+            45% {
+                transform: translateX(0%);
+                color: var(--accent-yellow);
+                text-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+            }
+
+            100% {
+                transform: translateX(0%);
+                color: var(--text-main);
+                text-shadow: none;
+            }
+        }
+
+        .vidi-printer.flash {
+            border-color: var(--accent-yellow);
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+        }
+
+        /* MAIN TWO-COLUMN WORKSPACE */
+        .main-layout {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 20px;
+            flex: 1;
+        }
+
+        @media (max-width: 900px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* TOP-LEFT BLOCK: 8x8 MATRIX (64 BITS COMPACT) */
+        .matrix-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 20px;
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            position: relative;
+        }
+
+        .matrix-panel.disabled-panel {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
+        .matrix-header {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* 8x8 MATRIX GRID */
+        .matrix-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 6px;
+            width: 280px;
+            min-height: 280px;
+            background: #060913;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid var(--panel-border);
+            box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.8);
+        }
+
+        .matrix-bit {
+            background: #1e293b;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            transition: all 0.08s ease;
+            height: 28px;
+        }
+
+        .matrix-bit.unowned {
+            opacity: 0.2;
+            border-color: transparent;
+            background: #0b0f19;
+        }
+
+        .matrix-bit.active {
+            background: var(--accent-green);
+            border-color: var(--accent-green);
+            color: #000;
+            font-weight: 700;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+        }
+
+        /* AUTO-RESET BORDER FLASH & FADE ANIMATION */
+        .matrix-bit.active.reset-pulse {
+            background: rgba(245, 158, 11, 0.25);
+            border: 1.5px solid var(--accent-yellow);
+            color: #fff;
+            font-weight: 800;
+            box-shadow: 0 0 14px var(--accent-yellow), inset 0 0 8px var(--accent-yellow);
+            animation: resetBorderFade 0.4s ease-out forwards;
+        }
+
+        @keyframes resetBorderFade {
+            0% {
+                border-color: var(--accent-red);
+                box-shadow: 0 0 18px var(--accent-red), inset 0 0 10px var(--accent-red);
+            }
+
+            50% {
+                border-color: var(--accent-yellow);
+                box-shadow: 0 0 14px var(--accent-yellow), inset 0 0 6px var(--accent-yellow);
+            }
+
+            100% {
+                border-color: var(--accent-green);
+                box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+            }
+        }
+
+        /* MATRIX TOOLBAR & COMPACT [R] BUTTON */
+        .toolbar-btn {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid var(--accent-green);
+            color: var(--accent-green);
+            font-family: var(--font-mono);
+            font-weight: 800;
+            font-size: 0.72rem;
+            width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+            box-shadow: 0 0 6px rgba(16, 185, 129, 0.3);
+        }
+
+        .toolbar-btn:hover {
+            transform: scale(1.08);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+        }
+
+        .toolbar-btn.inactive {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: var(--accent-yellow);
+            color: var(--accent-yellow);
+            box-shadow: none;
+        }
+
+        .toolbar-btn.inactive:hover {
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+        }
+
+        /* RIGHT PANEL: TELEMETRY & CONTROLS */
+        .dashboard-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .dashboard-panel.disabled-panel {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
+        /* TELEMETRY CARDS GRID */
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .card {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            padding: 8px 12px;
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .card-label {
+            font-family: var(--font-mono);
+            font-size: 0.62rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        .card-value {
+            font-family: var(--font-mono);
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            letter-spacing: -0.2px;
+        }
+
+        .card-subtext {
+            font-family: var(--font-mono);
+            font-size: 0.64rem;
+            color: var(--text-muted);
+        }
+
+        .card-value.green {
+            color: var(--accent-green);
+        }
+
+        .card-value.yellow {
+            color: var(--accent-yellow);
+        }
+
+        .card-value.purple {
+            color: var(--accent-purple);
+        }
+
+        /* ACTION BUTTONS & SHOP */
+        .action-btn {
+            background: #1e293b;
+            border: 1px solid var(--panel-border);
+            color: var(--text-main);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-align: center;
+        }
+
+        .action-btn:hover:not(:disabled) {
+            background: rgba(56, 189, 248, 0.2);
+            border-color: var(--accent-cyan);
+        }
+
+        .action-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        .action-btn.primary-action {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(56, 189, 248, 0.2));
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+        }
+
+        .action-btn.primary-action:hover:not(:disabled) {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.4), rgba(56, 189, 248, 0.4));
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
+        }
+
+        .shop-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 10px;
+        }
+
+        .shop-card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .shop-title {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .shop-desc {
+            font-family: var(--font-mono);
+            font-size: 0.66rem;
+            color: var(--text-muted);
+            line-height: 1.3;
+        }
+
+        /* MECHANICS BREAKDOWN / CODE-BOX STYLING */
+        .code-box {
+            background: #060913;
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            color: #38bdf8;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+
+        /* TYPE A: RETRO MONOTYPE MODAL OVERLAY */
+        .terminal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(6, 9, 19, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+
+        .terminal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .terminal-dialog-box {
+            background: #060913;
+            border: 1.5px solid var(--accent-cyan);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 540px;
+            width: 100%;
+            box-shadow: 0 0 35px rgba(56, 189, 248, 0.4), inset 0 0 15px rgba(56, 189, 248, 0.1);
+            font-family: var(--font-mono);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            cursor: pointer;
+        }
+
+        .terminal-dialog-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: var(--accent-cyan);
+            border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+            padding-bottom: 8px;
+            letter-spacing: 1px;
+            font-weight: 700;
+        }
+
+        .terminal-dialog-body {
+            font-size: 0.92rem;
+            line-height: 1.6;
+            color: #f8fafc;
+        }
+
+        .terminal-dialog-footer {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            text-align: right;
+            margin-top: 4px;
+            font-style: italic;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- APP HEADER -->
+    <header class="app-header">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <span class="title-badge">BINARY V2</span>
+            <span class="app-title">Phase 0 Onboarding & Core Loop</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <!-- POPUPS CONFIG TOGGLE -->
+            <button class="action-btn" id="btn-toggle-popups" onclick="togglePopupsConfig()"
+                style="padding: 6px 12px; font-size: 0.72rem; border-color: var(--accent-cyan); color: var(--accent-cyan);">
+                Popups: OFF
+            </button>
+
+            <!-- DEV MODE TOGGLE -->
+            <button class="action-btn" id="btn-dev-mode" onclick="game.toggleDevMode()"
+                style="padding: 6px 12px; font-size: 0.72rem; border-color: var(--accent-yellow); color: var(--accent-yellow);">
+                Dev Mode: OFF
+            </button>
+
+            <!-- MAIN POWER BUTTON -->
+            <button class="power-btn" id="btn-power-main" onclick="game.togglePower()">
+                ⚡ POWER ON
+            </button>
+        </div>
+    </header>
+
+    <!-- TYPE B: NON-INVASIVE RETRO VIDI-PRINTER / TTY MESSAGE BAR -->
+    <div class="vidi-printer" id="vidi-printer">
+        <span class="vidi-badge">📟 TTY LOG</span>
+        <div class="vidi-container">
+            <span class="vidi-text tty-scroll" id="vidi-text">System powered down. Click POWER ON to initialize clock
+                engine.</span>
+        </div>
+    </div>
+
+    <!-- DEV QUICK ACTION TOOLBAR (PERMANENTLY VISIBLE) -->
+    <div id="dev-quick-toolbar"
+        style="display: flex; background: rgba(245, 158, 11, 0.08); border: 1px dashed var(--accent-yellow); border-radius: 6px; padding: 6px 12px; margin: 0 16px 10px 16px; align-items: center; justify-content: space-between; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+            <span
+                style="font-family: var(--font-mono); font-size: 0.68rem; font-weight: 800; color: var(--accent-yellow);">🛠️
+                DEV TOOLBAR:</span>
+        </div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+            <button class="action-btn" onclick="game.adjustClockHz(-0.5)" title="Clock Speed -0.5 Hz"
+                style="padding: 3px 8px; font-size: 0.68rem; border-color: var(--panel-border);">⏱️ Clock
+                -0.5Hz</button>
+            <button class="action-btn" onclick="game.adjustClockHz(0.5)" title="Clock Speed +0.5 Hz"
+                style="padding: 3px 8px; font-size: 0.68rem; color: var(--accent-yellow); border-color: var(--accent-yellow);">⏱️
+                Clock +0.5Hz</button>
+            <button class="action-btn" onclick="game.adjustRegister(-1n)" title="Register Value -1"
+                style="padding: 3px 8px; font-size: 0.68rem; border-color: var(--panel-border);">➖ Reg -1</button>
+            <button class="action-btn" onclick="game.adjustRegister(1n)" title="Register Value +1"
+                style="padding: 3px 8px; font-size: 0.68rem; color: var(--accent-green); border-color: var(--accent-green);">➕
+                Reg +1</button>
+            <button class="action-btn" onclick="game.buyNextBitDev()" title="Free Unlock Next Bit"
+                style="padding: 3px 8px; font-size: 0.68rem; color: var(--accent-cyan); border-color: var(--accent-cyan);">🔓
+                Unlock Next Bit</button>
+            <button class="action-btn" onclick="openDevModal()" title="Open Full Dev Control Panel"
+                style="padding: 3px 8px; font-size: 0.68rem; color: var(--accent-purple); border-color: var(--accent-purple);">🛠️
+                Full Dev Panel</button>
+        </div>
+    </div>
+
+    <!-- MAIN WORKSPACE -->
+    <div class="main-layout">
+        <!-- LEFT COLUMN: STANDALONE CURRENCY PANEL + 8x8 MATRIX PANEL -->
+        <div style="display: flex; flex-direction: column; gap: 10px; width: 304px;">
+            <!-- STANDALONE CURRENCY PANEL (CYCLES / BYTES / WAFERS) -->
+            <div class="card" id="currency-panel" style="width: 304px; padding: 6px 8px; box-sizing: border-box;">
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; text-align: center;">
+                    <div class="code-box" style="padding: 4px; border-color: rgba(16, 185, 129, 0.3);">
+                        <div
+                            style="font-size: 0.56rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">
+                            Cycles</div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: var(--accent-green);"
+                            id="currency-cycles">0</div>
+                    </div>
+                    <div class="code-box" style="padding: 4px; border-color: rgba(56, 189, 248, 0.3);">
+                        <div
+                            style="font-size: 0.56rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">
+                            Bytes</div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: var(--accent-cyan);"
+                            id="currency-bytes">0</div>
+                    </div>
+                    <div class="code-box" style="padding: 4px; border-color: rgba(168, 85, 247, 0.3);">
+                        <div
+                            style="font-size: 0.56rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">
+                            Wafers</div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: var(--accent-purple);"
+                            id="currency-wafers">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STANDALONE TOP-LEFT COMPACT 8x8 MATRIX -->
+            <div class="matrix-panel disabled-panel" id="matrix-panel" style="width: 304px; box-sizing: border-box;">
+                <div class="matrix-header">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>8 × 8 Bit Matrix</span>
+                        <!-- MATRIX TOOLBAR -->
+                        <div id="matrix-toolbar"
+                            style="display: flex; gap: 4px; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;">
+                            <button class="toolbar-btn" id="btn-toolbar-pulse" onclick="game.manualPulse()"
+                                title="Manual Tick / Pulse (+10 Cycles)">
+                                M
+                            </button>
+                            <button class="toolbar-btn" id="btn-toolbar-mr" onclick="game.manualReset()"
+                                title="Manual Reset (Cost: 5 Cycles)">
+                                MR
+                            </button>
+                            <button class="toolbar-btn" id="btn-toolbar-reset" onclick="game.toggleAutoResetActive()"
+                                title="Auto-Reset: ACTIVE (Click to toggle)">
+                                R
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                        <span id="matrix-status"
+                            style="color: var(--accent-green); font-weight: bold; font-size: 0.82rem;">POWERED
+                            OFF</span>
+                        <span id="matrix-reset-indicator"
+                            style="font-size: 0.62rem; color: var(--accent-red); font-weight: 800; letter-spacing: 0.5px; opacity: 0; transition: opacity 0.15s ease;">Resetting...</span>
+                    </div>
+                </div>
+
+                <!-- 8x8 MATRIX CONTAINER -->
+                <div class="matrix-grid" id="matrix-grid">
+                    <!-- Dynamically populated 64 bits -->
+                </div>
+
+                <!-- MATRIX STATS PANEL (BENEATH MATRIX) -->
+                <div class="card" style="width: 280px;">
+                    <span class="card-label">📊 Matrix Telemetry</span>
+                    <div class="code-box" style="margin-top: 4px; padding: 10px;">
+                        Register Value : <span style="color: var(--accent-cyan);" id="stat-matrix-reg-dec">0</span>
+                        Growth Rate/sec: <span style="color: var(--accent-green);" id="stat-matrix-reg-rate">+1.00
+                            /sec</span>
+                        Clock Speed : <span style="color: var(--accent-yellow);" id="stat-matrix-clock">1.00 Hz</span>
+                        Time to MSB : <span style="color: var(--accent-green);" id="stat-matrix-msb-time">1.0s</span>
+                        Time to Bit 65 : <span style="color: var(--accent-cyan);" id="stat-matrix-bit65-time">584.54
+                            Billion Yrs</span>
+                        Total Resets : <span style="color: var(--accent-purple);" id="stat-matrix-resets">0</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT DASHBOARD: TELEMETRY & SHOP -->
+        <div class="dashboard-panel disabled-panel" id="dashboard-panel">
+            <!-- INITIAL MANUAL CLOCK CONTROLS (MOVED TO DASHBOARD AREA, HIDES UPON MIGRATION) -->
+            <div id="large-manual-btn-container" class="card" style="display: flex; flex-direction: column; gap: 6px;">
+                <span class="card-label">⚡ Manual Clock Controls</span>
+                <div style="display: flex; gap: 8px;">
+                    <button class="action-btn primary-action" id="btn-manual-reset" onclick="game.manualReset()"
+                        disabled style="flex: 1;">
+                        🔄 Manual Reset (Cost: 5)
+                    </button>
+                    <button class="action-btn" id="btn-manual-pulse" onclick="game.manualPulse()" disabled
+                        style="flex: 1;">
+                        ⚡ Manual Pulse (+10)
+                    </button>
+                </div>
+            </div>
+
+            <!-- SHOP & UPGRADES PANEL -->
+            <div class="card">
+                <span class="card-label" style="margin-bottom: 6px;">🛒 Phase 0 Module Upgrades</span>
+                <div class="shop-grid" id="shop-grid">
+                    <!-- Dynamically populated shop items -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TYPE A: RETRO MONOTYPE MODAL OVERLAY -->
+    <div class="terminal-overlay" id="terminal-modal" onclick="closeTerminalModal()">
+        <div class="terminal-dialog-box" onclick="closeTerminalModal()">
+            <div class="terminal-dialog-header">
+                <span>SYSTEM TERMINAL // MODAL ALERT</span>
+                <span style="color: var(--accent-cyan);">ONLINE</span>
+            </div>
+            <div class="terminal-dialog-body" id="terminal-modal-text">
+                Modal message...
+            </div>
+            <div class="terminal-dialog-footer">
+                [ Click anywhere to dismiss ]
+            </div>
+        </div>
+    </div>
+
+    <!-- DEV MODE OPTIONS MODAL OVERLAY -->
+    <div class="terminal-overlay" id="dev-modal" onclick="closeDevModal(event)">
+        <div class="terminal-dialog-box" onclick="event.stopPropagation()">
+            <div class="terminal-dialog-header">
+                <span>🛠️ DEV MODE CONTROL PANEL</span>
+                <span style="color: var(--accent-yellow);">DEV OVERRIDE</span>
+            </div>
+
+            <!-- GAME SPEED CONTROLS -->
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <span
+                    style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">⚡
+                    Game Speed Fast-Forward</span>
+                <div style="display: flex; gap: 6px;">
+                    <button class="action-btn" id="dev-speed-btn-1" onclick="game.setSpeedMultiplier(1)">1x</button>
+                    <button class="action-btn" id="dev-speed-btn-2" onclick="game.setSpeedMultiplier(2)">2x</button>
+                    <button class="action-btn" id="dev-speed-btn-5" onclick="game.setSpeedMultiplier(5)">5x</button>
+                    <button class="action-btn" id="dev-speed-btn-10" onclick="game.setSpeedMultiplier(10)">10x</button>
+                    <button class="action-btn" id="dev-speed-btn-50" onclick="game.setSpeedMultiplier(50)">50x</button>
+                </div>
+            </div>
+
+            <!-- DEV PRESETS -->
+            <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
+                <span
+                    style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">📋
+                    Quick Test Presets</span>
+                <button class="action-btn" onclick="game.applyPreset('test_byte_1')"
+                    style="border-color: var(--accent-cyan); color: var(--accent-cyan); text-align: left;">
+                    Preset 1: Test First Byte (8 Bits, Register=254, Manual Click to 256)
+                </button>
+                <button class="action-btn" onclick="game.applyPreset('fresh_start')" style="text-align: left;">
+                    Preset 2: Fresh Start (1 Bit, 0 Cycles)
+                </button>
+            </div>
+
+            <!-- OVERRIDE ACTIONS -->
+            <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
+                <span
+                    style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">🔧
+                    Quick Helper Overrides</span>
+                <div style="display: flex; gap: 6px;">
+                    <button class="action-btn" onclick="game.addFreeCycles(500)" style="flex: 1;">+500 Free
+                        Cycles</button>
+                    <button class="action-btn" onclick="game.addFreeBytes(5)"
+                        style="flex: 1; color: var(--accent-cyan); border-color: var(--accent-cyan);">+5 Free
+                        Bytes</button>
+                </div>
+                <button class="action-btn" onclick="game.unlockAllBitsDev()">Unlock All 64 Bits</button>
+                <button class="action-btn" onclick="game.disableDevMode()"
+                    style="color: var(--accent-red); border-color: var(--accent-red); margin-top: 4px;">❌ Disable Dev
+                    Mode</button>
+            </div>
+
+            <div class="terminal-dialog-footer">
+                [ Click outside to close ]
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // 1. MESSAGE CONTROLLER (TYPE A MODAL & TYPE B VIDI-PRINTER)
+        // =========================================================================
+        let enablePopups = false; // CONFIG: Switch popups ON/OFF (Default: OFF)
+        let isModalOpen = false;
+        let seenMessages = {
+            powerOnModal: false,
+            firstTickVidi: false,
+            firstResetModal: false
+        };
+
+        function togglePopupsConfig() {
+            enablePopups = !enablePopups;
+            document.getElementById('btn-toggle-popups').innerText = `Popups: ${enablePopups ? 'ON' : 'OFF'}`;
+            showTypeBVidi(`Popups Config updated: ${enablePopups ? 'ENABLED' : 'DISABLED'}`, null);
+        }
+
+        // TYPE A: Invasive Modal Dialog (For Power On, First Manual Reset & Module Migration)
+        function showTypeAModal(text, msgKey, forceModal = false) {
+            if (!enablePopups && !forceModal) return; // Muted by Config unless forced
+            if (seenMessages[msgKey] && !game.devMode) return;
+
+            seenMessages[msgKey] = true;
+            document.getElementById('terminal-modal-text').innerText = text;
+            const modal = document.getElementById('terminal-modal');
+            modal.classList.add('active');
+            isModalOpen = true;
+        }
+
+        function closeTerminalModal() {
+            const modal = document.getElementById('terminal-modal');
+            modal.classList.remove('active');
+            isModalOpen = false;
+        }
+
+        // TYPE B: Non-Invasive Vidi-Printer TTY Ticker (For Inline Info Hints)
+        function showTypeBVidi(text, msgKey) {
+            if (msgKey && seenMessages[msgKey] && !game.devMode) return;
+            if (msgKey) seenMessages[msgKey] = true;
+
+            const vidiText = document.getElementById('vidi-text');
+            const vidiBar = document.getElementById('vidi-printer');
+
+            vidiText.classList.remove('tty-scroll');
+            void vidiText.offsetWidth; // Trigger reflow to restart CSS animation
+
+            vidiText.innerText = text;
+            vidiText.classList.add('tty-scroll');
+
+            vidiBar.classList.add('flash');
+            setTimeout(() => vidiBar.classList.remove('flash'), 1200);
+        }
+
+        // CENTRALIZABLE GAME CONFIG & PRESETS
+        const GAME_CONFIG = {
+            AUTO_RESET_COST: 25n,
+            AUTO_UNLOCK_COST: 1000n,
+            BASE_BIT_COST: 50n,
+            // ABSTRACTED BIT UNLOCK COST FORMULA (Easily swap scaling strategies: 50 * N, N^1.5, Exponential, etc.)
+            BIT_COST_FORMULA: function(n) {
+                // Linear 50 * N formula (e.g. Bit 2 = 100, Bit 3 = 150, Bit 4 = 200, Bit 8 = 400)
+                return 50n * BigInt(n);
+            }
+        };
+
+        const GAME_PRESETS = {
+            test_byte_1: {
+                name: 'Test First Byte',
+                apply(game) {
+                    game.isPoweredOn = true;
+                    game.ownedBits = 8;
+                    game.register = 254n;
+                    game.autoResetEnabled = false;
+                    game.autoResetActive = false;
+                    game.autoUnlockEnabled = false;
+                    game.autoUnlockActive = false;
+                    showTypeBVidi("Preset Applied: 8 Bits, Register=254. Click Manual Pulse twice to test Byte 1 completion!", null);
+                    updateUI();
+                }
+            },
+            fresh_start: {
+                name: 'Fresh Start',
+                apply(game) {
+                    game.hardReset();
+                    showTypeBVidi("Preset Applied: Fresh Start initialized.", null);
+                    updateUI();
+                }
+            }
+        };
+
+        // =========================================================================
+        // 2. DECOUPLED PHASE 0 GAME ENGINE
+        // =========================================================================
+        class GameEnginePhase0 {
+            constructor() {
+                this.isPoweredOn = false;
+                this.devMode = false;
+                this.speedMultiplier = 1.0;
+
+                // State
+                this.cycles = 0n;
+                this.bytes = 0n;
+                this.wafers = 0n;
+                this.totalCyclesEarned = 0n;
+                this.ownedBits = 1;
+                this.register = 0n;
+                this.manualBitPurchases = 0; // Requires >= 2 for Auto-Unlock
+
+                // Modules & Upgrades
+                this.autoResetEnabled = false;
+                this.autoResetActive = true;
+                this.autoResetCount = 0; // Tracks number of auto-resets executed
+                this.manualResetCount = 0;
+                this.isResetting = false; // Auto-Reset pulse state
+
+                // Auto-Unlock Bits Module (New)
+                this.autoUnlockEnabled = false;
+                this.autoUnlockActive = true;
+                this.autoUnlockBufferPct = 0; // 0% to 200% reserve buffer
+
+                // Migration & Phase 0 Completion Flags
+                this.hasReachedBit4 = false;
+                this.migrationTriggered = false;
+                this.completedByte1 = false;
+                this.byte1AwardedThisCycle = false;
+                this.byteClockUpgradeLevel = 0;
+
+                this.clockHz = 1.00;
+                this.cyclePayoutPerFill = 10n;
+
+                this.autoAccumulator = 0.0;
+            }
+
+            togglePower() {
+                if (!this.isPoweredOn) {
+                    // POWER ON
+                    this.isPoweredOn = true;
+                    showTypeBVidi("System initialized. 1.00 Hz Clock running...", null);
+
+                    // Type A Modal: First Power On Message
+                    showTypeAModal(
+                        "Before we fire up the clock, the clock will increment the register up to the number of bits available. You start with one bit. Each increment of the register earns you cycles. Spend them wisely...are you ready?",
+                        "powerOnModal"
+                    );
+                } else {
+                    // POWER OFF: Hard Reset with zero warning! (Unless Dev Mode bypass is ON)
+                    if (!this.devMode) {
+                        this.hardReset();
+                        showTypeBVidi("System powered down. HARD RESET EXECUTED. Click POWER ON to initialize.", null);
+                    } else {
+                        this.isPoweredOn = false;
+                        showTypeBVidi("System powered down (Dev Mode Bypass).", null);
+                    }
+                }
+                updateUI();
+            }
+
+            toggleDevMode() {
+                if (!this.devMode) {
+                    this.devMode = true;
+                    this.cycles += 100n;
+                    this.totalCyclesEarned += 100n;
+                    showTypeBVidi("Dev Mode ON: +100 Cycles added & Dev Control Panel opened.", null);
+                    openDevModal();
+                } else {
+                    // Clicking header button while Dev Mode is ON opens Dev Control Panel modal!
+                    openDevModal();
+                }
+                updateUI();
+            }
+
+            disableDevMode() {
+                this.devMode = false;
+                showTypeBVidi("Dev Mode OFF.", null);
+                closeDevModal();
+                updateUI();
+            }
+
+            hardReset() {
+                this.isPoweredOn = false;
+                this.speedMultiplier = 1.0;
+                this.cycles = 0n;
+                this.bytes = 0n;
+                this.wafers = 0n;
+                this.totalCyclesEarned = 0n;
+                this.ownedBits = 1;
+                this.register = 0n;
+                this.manualBitPurchases = 0;
+                this.autoResetEnabled = false;
+                this.autoUnlockEnabled = false;
+                this.hasReachedBit4 = false;
+                this.migrationTriggered = false;
+                this.completedByte1 = false;
+                this.byte1AwardedThisCycle = false;
+                this.byteClockUpgradeLevel = 0;
+                this.clockHz = 1.00;
+                this.cyclePayoutPerFill = 10n;
+                this.autoAccumulator = 0.0;
+            }
+
+            getMaxRegister() {
+                return (1n << BigInt(this.ownedBits)) - 1n;
+            }
+
+            isRegisterFull() {
+                return this.register >= this.getMaxRegister();
+            }
+
+            tick(dt) {
+                if (!this.isPoweredOn || isModalOpen) return;
+
+                const maxReg = this.getMaxRegister();
+
+                // If register is full and Auto-Reset is NOT owned: Clock pauses / waits for manual reset!
+                if (this.isRegisterFull() && !this.autoResetEnabled) {
+                    return;
+                }
+
+                // Apply Dev Speed Multiplier to delta time
+                const effectiveDt = dt * this.speedMultiplier;
+                this.autoAccumulator += this.clockHz * effectiveDt;
+
+                // Process all accumulated ticks in a loop (handles 50x speed smoothly!)
+                while (this.autoAccumulator >= 1.0) {
+                    this.autoAccumulator -= 1.0;
+                    this.pulseTick();
+                }
+            }
+
+            pulseTick() {
+                const maxReg = this.getMaxRegister();
+
+                // Auto-Unlock Bits Check
+                if (this.autoUnlockEnabled && this.autoUnlockActive) {
+                    const nextBit = this.ownedBits + 1;
+                    if (nextBit <= 64) {
+                        const baseCost = getBitUnlockCost(nextBit);
+                        const mult = 1.0 + (this.autoUnlockBufferPct / 100.0);
+                        const reqCycles = BigInt(Math.floor(Number(baseCost) * mult));
+                        if (this.cycles >= reqCycles) {
+                            this.buyNextBit();
+                        }
+                    }
+                }
+
+                // Check for First Reset after Bit 4 -> Trigger Non-Jarring Migration!
+                if (this.hasReachedBit4 && !this.migrationTriggered && (this.isResetting || this.register >= maxReg)) {
+                    this.migrationTriggered = true;
+                    showTypeAModal(
+                        "MODULE MIGRATION NOTICE: You have completed a register reset on Bit 4! Your Manual Reset, Manual Tick, and Auto-Reset controls are now consolidated into the Matrix Toolbar above the 8x8 Matrix [M] [MR] [R].",
+                        "migrationModal",
+                        true // forceModal = true so popup displays!
+                    );
+                }
+
+                // If currently in Auto-Reset pulse state: 1 clock pulse is complete, clear register back to 0!
+                if (this.isResetting) {
+                    this.register = 0n;
+                    this.isResetting = false;
+                    this.autoResetCount++;
+
+                    // Resetting from 255 -> 0 completes a 256-tick byte boundary
+                    if (this.ownedBits >= 8) {
+                        this.awardBytes(1n);
+                    }
+                    return;
+                }
+
+                if (this.register < maxReg) {
+                    const step = 1n;
+                    const oldReg = this.register;
+                    this.register += step;
+
+                    // Award Cycles on every tick/fill
+                    this.cycles += this.cyclePayoutPerFill * step;
+                    this.totalCyclesEarned += this.cyclePayoutPerFill * step;
+
+                    // Calculate full 256-boundary byte steps crossed
+                    if (this.ownedBits >= 8) {
+                        const bytesEarned = (this.register / 256n) - (oldReg / 256n);
+                        if (bytesEarned > 0n) {
+                            this.awardBytes(bytesEarned);
+                        }
+                    }
+                }
+
+                // If register just hit capacity and Auto-Reset is enabled AND active:
+                if (this.register >= maxReg && this.autoResetEnabled && this.autoResetActive) {
+                    this.isResetting = true;
+                }
+            }
+
+            awardBytes(amount) {
+                if (amount <= 0n) return;
+                this.bytes += amount;
+
+                if (!this.completedByte1) {
+                    this.completedByte1 = true;
+                    showTypeAModal(
+                        "CONGRATULATIONS! You have completed Byte 1! Bytes can be exchanged for ever-increasing powerups in the Shop.",
+                        "byte1CompletedModal",
+                        true // forceModal = true!
+                    );
+                }
+            }
+
+            manualPulse() {
+                if (!this.isPoweredOn || isModalOpen) return;
+                this.pulseTick();
+                updateUI();
+            }
+
+            manualReset() {
+                if (!this.isPoweredOn) return;
+                const cost = 5n;
+                if (this.cycles >= cost && this.isRegisterFull()) {
+                    this.cycles -= cost;
+                    if (this.ownedBits >= 8) {
+                        this.awardBytes(1n);
+                    }
+                    this.register = 0n;
+                    this.manualResetCount++;
+
+                    // Check for Bit 4 reset migration
+                    if (this.hasReachedBit4 && !this.migrationTriggered) {
+                        this.migrationTriggered = true;
+                        showTypeAModal(
+                            "MODULE MIGRATION NOTICE: You have completed a manual reset on Bit 4! Your Manual Reset, Manual Tick, and Auto-Reset controls are now consolidated into the Matrix Toolbar above the 8x8 Matrix [M] [MR] [R].",
+                            "migrationModal",
+                            true
+                        );
+                    } else {
+                        showTypeAModal(
+                            "MANUAL RESET CONFIRMATION: Resetting clears current register values for 5 cycles. IMPORTANT: You NEVER lose unlocked bits or purchased modules — they stay permanently unlocked!",
+                            "firstResetModal"
+                        );
+                    }
+
+                    updateUI();
+                }
+            }
+
+            toggleAutoResetActive() {
+                if (!this.autoResetEnabled) return;
+                this.autoResetActive = !this.autoResetActive;
+                showTypeBVidi(`Auto-Reset Module set to ${this.autoResetActive ? 'ACTIVE' : 'INACTIVE'}.`, null);
+                updateUI();
+            }
+
+            toggleAutoUnlockActive() {
+                if (!this.autoUnlockEnabled) return;
+                this.autoUnlockActive = !this.autoUnlockActive;
+                showTypeBVidi(`Auto-Unlock Bits set to ${this.autoUnlockActive ? 'ACTIVE' : 'INACTIVE'}.`, null);
+                updateUI();
+            }
+
+            setAutoUnlockBufferPct(pct) {
+                this.autoUnlockBufferPct = parseInt(pct, 10);
+                updateUI();
+            }
+
+            buyAutoReset() {
+                const cost = GAME_CONFIG.AUTO_RESET_COST;
+                if (this.cycles >= cost && !this.autoResetEnabled) {
+                    this.cycles -= cost;
+                    this.autoResetEnabled = true;
+                    this.autoResetActive = true;
+                    if (this.isRegisterFull()) {
+                        this.isResetting = true;
+                    }
+                    showTypeBVidi("⚡ Auto-Reset Module Purchased & Activated! Continuous profit online.", null);
+                    updateUI();
+                }
+            }
+
+            buyAutoUnlock() {
+                const cost = GAME_CONFIG.AUTO_UNLOCK_COST;
+                if (this.cycles >= cost && !this.autoUnlockEnabled) {
+                    this.cycles -= cost;
+                    this.autoUnlockEnabled = true;
+                    this.autoUnlockActive = true;
+                    showTypeBVidi("⚡ Auto-Unlock Bits Module Purchased! Automatic bit depth expansion online.", null);
+                    updateUI();
+                }
+            }
+
+            buyNextBit() {
+                const nextBit = this.ownedBits + 1;
+                const cost = getBitUnlockCost(nextBit);
+                if (this.cycles >= cost) {
+                    this.cycles -= cost;
+                    this.ownedBits = nextBit;
+                    this.manualBitPurchases++;
+
+                    if (this.ownedBits >= 4) {
+                        this.hasReachedBit4 = true;
+                    }
+                    showTypeBVidi(`Bit ${nextBit} Unlocked! Register capacity expanded to ${(1n << BigInt(nextBit)) - 1n} Ticks.`, null);
+                    updateUI();
+                }
+            }
+
+            buyByteClockUpgrade() {
+                const level = this.byteClockUpgradeLevel;
+                const costBytes = 1n << BigInt(level);
+                const hzGain = 0.5 * Math.pow(2, level);
+
+                if (this.bytes >= costBytes) {
+                    this.bytes -= costBytes;
+                    this.byteClockUpgradeLevel++;
+                    this.clockHz += hzGain;
+                    showTypeBVidi(`⚡ Byte Upgrade Purchased! Clock speed boosted by +${hzGain.toFixed(1)} Hz (Total: ${this.clockHz.toFixed(2)} Hz).`, null);
+                    updateUI();
+                }
+            }
+
+            // Dev Mode Helpers & Presets
+            setSpeedMultiplier(speed) {
+                this.speedMultiplier = speed;
+                showTypeBVidi(`Dev Override: Game Speed set to ${speed}x.`, null);
+                renderDevModalUI();
+                updateUI();
+            }
+
+            applyPreset(presetKey) {
+                if (GAME_PRESETS[presetKey]) {
+                    GAME_PRESETS[presetKey].apply(this);
+                }
+            }
+
+            addFreeBytes(amount) {
+                this.bytes += BigInt(amount);
+                showTypeBVidi(`Dev Override: Added +${amount} Bytes.`, null);
+                updateUI();
+            }
+
+            adjustClockHz(deltaHz) {
+                this.clockHz = Math.max(0.1, Number((this.clockHz + deltaHz).toFixed(2)));
+                showTypeBVidi(`Dev Override: Clock speed adjusted to ${this.clockHz.toFixed(2)} Hz.`, null);
+                updateUI();
+            }
+
+            adjustRegister(delta) {
+                const maxReg = this.getMaxRegister();
+                if (delta > 0n) {
+                    if (this.register < maxReg) {
+                        this.register += delta;
+                    }
+                } else if (delta < 0n) {
+                    if (this.register > 0n) {
+                        this.register = (this.register + delta < 0n) ? 0n : (this.register + delta);
+                    }
+                }
+                showTypeBVidi(`Dev Override: Register set to ${this.register.toString()}.`, null);
+                updateUI();
+            }
+
+            buyNextBitDev() {
+                const nextBit = this.ownedBits + 1;
+                if (nextBit <= 64) {
+                    this.ownedBits = nextBit;
+                    this.manualBitPurchases++;
+                    if (this.ownedBits >= 4) {
+                        this.hasReachedBit4 = true;
+                    }
+                    showTypeBVidi(`Dev Override: Unlocked Bit ${nextBit}!`, null);
+                    updateUI();
+                }
+            }
+
+            // Dev Mode Helpers
+            addFreeCycles(amount) {
+                this.cycles += BigInt(amount);
+                this.totalCyclesEarned += BigInt(amount);
+                showTypeBVidi(`Dev Override: Added +${amount} Cycles.`, null);
+                updateUI();
+            }
+
+            buyClockUpgradeDev() {
+                this.clockHz += 0.5;
+                showTypeBVidi(`Dev Override: Clock speed set to ${this.clockHz.toFixed(2)} Hz.`, null);
+                updateUI();
+            }
+
+            buyYieldBoosterDev() {
+                this.cyclePayoutPerFill += 5n;
+                showTypeBVidi(`Dev Override: Yield set to +${this.cyclePayoutPerFill} Cycles per fill.`, null);
+                updateUI();
+            }
+
+            unlockAllBitsDev() {
+                this.ownedBits = 64;
+                showTypeBVidi("Dev Override: Unlocked all 64 Bits!", null);
+                updateUI();
+            }
+        }
+
+        const game = new GameEnginePhase0();
+
+        // =========================================================================
+        // 3. UI & MATRIX CONTROLLER (8x8 Grid Builder)
+        // =========================================================================
+        const matrixGridEl = document.getElementById('matrix-grid');
+
+        let lastMatrixState = "";
+
+        function renderMatrixUI() {
+            const currentMatrixState = `${game.register.toString()}_${game.ownedBits}_${game.isResetting}`;
+            if (currentMatrixState === lastMatrixState) return;
+            lastMatrixState = currentMatrixState;
+
+            matrixGridEl.innerHTML = '';
+            const maxReg = game.getMaxRegister();
+
+            for (let i = 0; i < 64; i++) {
+                const isOwned = i < game.ownedBits;
+                const bitVal = isOwned && (game.register & (1n << BigInt(i))) !== 0n;
+                const bitEl = document.createElement('div');
+
+                if (!isOwned) {
+                    bitEl.className = 'matrix-bit unowned';
+                    bitEl.innerText = '';
+                } else if (game.isResetting && bitVal) {
+                    bitEl.className = 'matrix-bit active reset-pulse';
+                    bitEl.innerText = '1';
+                } else if (bitVal) {
+                    bitEl.className = 'matrix-bit active';
+                    bitEl.innerText = '1';
+                } else {
+                    bitEl.className = 'matrix-bit';
+                    bitEl.innerText = '0';
+                }
+
+                matrixGridEl.appendChild(bitEl);
+            }
+        }
+
+        function formatEngineering(val) {
+            const bigVal = BigInt(val);
+            if (bigVal < 1000000n) return bigVal.toLocaleString();
+
+            const num = Number(bigVal);
+            if (!isFinite(num)) return '∞';
+
+            const units = ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'];
+            const exp = Math.floor(Math.log10(Math.abs(num)) / 3);
+            const unitIdx = Math.min(exp, units.length - 1);
+            const scaled = num / Math.pow(10, unitIdx * 3);
+
+            return `${scaled.toFixed(2)} ${units[unitIdx]}`;
+        }
+
+        function getCyclesPerSecond(game) {
+            if (!game.isPoweredOn || game.clockHz <= 0) return 0;
+            if (game.isRegisterFull() && !game.autoResetEnabled) return 0;
+
+            const fillTicks = game.ownedBits;
+            const resetPulseTicks = (game.autoResetEnabled && game.autoResetActive) ? 1 : 0;
+            const totalTicksPerCycle = fillTicks + resetPulseTicks;
+
+            const cyclesEarnedPerRun = fillTicks * Number(game.cyclePayoutPerFill);
+            const runsPerSec = game.clockHz / totalTicksPerCycle;
+
+            return runsPerSec * cyclesEarnedPerRun;
+        }
+
+        function formatFrequency(freqHz) {
+            if (!isFinite(freqHz) || freqHz <= 0) return '0.00 Hz';
+            if (freqHz < 1000) return `${freqHz.toFixed(2)} Hz`;
+            if (freqHz < 1e6) return `${(freqHz / 1000).toFixed(2)} kHz`;
+            if (freqHz < 1e9) return `${(freqHz / 1e6).toFixed(2)} MHz`;
+            if (freqHz < 1e12) return `${(freqHz / 1e9).toFixed(2)} GHz`;
+            return `${freqHz.toExponential(2)} Hz`;
+        }
+
+        function formatTimeSeconds(sec) {
+            if (!isFinite(sec) || sec < 0) return '∞';
+            if (sec < 60) return `${sec.toFixed(1)}s`;
+
+            const minutes = Math.floor(sec / 60);
+            const remSec = Math.floor(sec % 60);
+            if (minutes < 60) return `${minutes}m ${remSec}s`;
+
+            const hours = Math.floor(minutes / 60);
+            const remMin = minutes % 60;
+            if (hours < 24) return `${hours}h ${remMin}m`;
+
+            const days = Math.floor(hours / 24);
+            const remHours = hours % 24;
+            if (days < 365) return `${days}d ${remHours}h`;
+
+            const years = sec / (365.25 * 86400);
+            if (years < 1e6) return `${years.toLocaleString(undefined, { maximumFractionDigits: 1 })} Yrs`;
+            if (years < 1e9) return `${(years / 1e6).toFixed(2)} Million Yrs`;
+            if (years < 1e12) return `${(years / 1e9).toFixed(2)} Billion Yrs`;
+            return `${years.toExponential(2)} Yrs`;
+        }
+
+        function getNextMSBTarget(reg) {
+            if (reg === 0n) return 1n;
+            let bit = 0;
+            let temp = reg;
+            while (temp > 0n) {
+                temp >>= 1n;
+                bit++;
+            }
+            return 1n << BigInt(bit);
+        }
+
+        function updateUI() {
+            const powerBtn = document.getElementById('btn-power-main');
+            const matrixPanel = document.getElementById('matrix-panel');
+            const dashboardPanel = document.getElementById('dashboard-panel');
+            const matrixStatus = document.getElementById('matrix-status');
+
+            document.getElementById('btn-dev-mode').innerText = game.devMode ? '🛠️ Dev Panel (ON)' : 'Dev Mode: OFF';
+
+            if (game.isPoweredOn) {
+                powerBtn.className = 'power-btn powered-on';
+                powerBtn.innerText = '⚡ POWER OFF (HARD RESET)';
+                matrixPanel.className = 'matrix-panel';
+                dashboardPanel.className = 'dashboard-panel';
+                matrixStatus.innerText = `${formatFrequency(game.clockHz)} ACTIVE`;
+                matrixStatus.style.color = 'var(--accent-green)';
+            } else {
+                powerBtn.className = 'power-btn';
+                powerBtn.innerText = '⚡ POWER ON';
+                matrixPanel.className = 'matrix-panel disabled-panel';
+                dashboardPanel.className = 'dashboard-panel disabled-panel';
+                matrixStatus.innerText = 'POWERED OFF';
+                matrixStatus.style.color = 'var(--text-muted)';
+            }
+
+            // Top Currency Bar Update (Engineering format after 1M)
+            const cyclesFormatted = formatEngineering(game.cycles);
+            const bytesFormatted = formatEngineering(game.bytes);
+            const wafersFormatted = formatEngineering(game.wafers);
+
+            document.getElementById('currency-cycles').innerText = cyclesFormatted;
+            document.getElementById('currency-bytes').innerText = bytesFormatted;
+            document.getElementById('currency-wafers').innerText = wafersFormatted;
+
+            // Matrix Stats (Beneath Matrix)
+            const hz = game.clockHz;
+            document.getElementById('stat-matrix-reg-dec').innerText = game.register.toString();
+
+            const growthRate = game.isPoweredOn ? (hz * 1.0) : 0.0;
+            document.getElementById('stat-matrix-reg-rate').innerText = `+${growthRate < 1000 ? growthRate.toFixed(2) : growthRate.toExponential(2)} /sec`;
+
+            document.getElementById('stat-matrix-clock').innerText = formatFrequency(hz);
+
+            const targetMSB = getNextMSBTarget(game.register);
+            const deltaMSB = targetMSB - game.register;
+            const msbTimeSec = hz > 0 ? Number(deltaMSB) / hz : Infinity;
+            document.getElementById('stat-matrix-msb-time').innerText = formatTimeSeconds(msbTimeSec);
+
+            const bit65Target = 1n << 64n;
+            const deltaBit65 = bit65Target > game.register ? (bit65Target - game.register) : 0n;
+            const bit65TimeSec = hz > 0 ? Number(deltaBit65) / hz : Infinity;
+            document.getElementById('stat-matrix-bit65-time').innerText = formatTimeSeconds(bit65TimeSec);
+
+            const totalResets = (game.autoResetCount + game.manualResetCount).toLocaleString();
+            document.getElementById('stat-matrix-resets').innerText = totalResets;
+
+            // Matrix Header Resetting... Indicator & Toolbar Update
+            const resetIndicator = document.getElementById('matrix-reset-indicator');
+            if (resetIndicator) {
+                resetIndicator.style.opacity = game.isResetting ? '1' : '0';
+            }
+
+            const matrixToolbar = document.getElementById('matrix-toolbar');
+            const toolbarResetBtn = document.getElementById('btn-toolbar-reset');
+            const toolbarMrBtn = document.getElementById('btn-toolbar-mr');
+            const toolbarPulseBtn = document.getElementById('btn-toolbar-pulse');
+            const largeBtnContainer = document.getElementById('large-manual-btn-container');
+
+            // Migrate toolbar controls on first reset after Bit 4
+            const isMigrated = game.migrationTriggered;
+
+            if (matrixToolbar && game.autoResetEnabled && isMigrated) {
+                matrixToolbar.style.opacity = '1';
+                matrixToolbar.style.pointerEvents = 'auto';
+
+                if (largeBtnContainer) largeBtnContainer.style.display = 'none';
+
+                if (toolbarResetBtn) {
+                    if (game.autoResetActive) {
+                        toolbarResetBtn.className = 'toolbar-btn';
+                        toolbarResetBtn.title = 'Auto-Reset: ACTIVE (Click to toggle)';
+                    } else {
+                        toolbarResetBtn.className = 'toolbar-btn inactive';
+                        toolbarResetBtn.title = 'Auto-Reset: INACTIVE (Click to toggle)';
+                    }
+                }
+            } else if (matrixToolbar) {
+                matrixToolbar.style.opacity = '0';
+                matrixToolbar.style.pointerEvents = 'none';
+                if (largeBtnContainer) largeBtnContainer.style.display = 'flex';
+            }
+
+            // Manual Action Buttons
+            const isFull = game.isRegisterFull();
+            const resetBtn = document.getElementById('btn-manual-reset');
+            const pulseBtn = document.getElementById('btn-manual-pulse');
+
+            resetBtn.disabled = !game.isPoweredOn || !isFull || game.cycles < 5n;
+            pulseBtn.disabled = !game.isPoweredOn || (isFull && !game.autoResetEnabled);
+
+            if (toolbarMrBtn) toolbarMrBtn.disabled = resetBtn.disabled;
+            if (toolbarPulseBtn) toolbarPulseBtn.disabled = pulseBtn.disabled;
+
+            // Render Shop Cards
+            renderShopUI();
+            updateShopDynamicValues();
+            renderMatrixUI();
+        }
+
+        function getBitUnlockCost(bitNumber) {
+            if (bitNumber <= 1) return 0n;
+            return GAME_CONFIG.BIT_COST_FORMULA(bitNumber);
+        }
+
+        function openDevModal() {
+            renderDevModalUI();
+            document.getElementById('dev-modal').classList.add('active');
+        }
+
+        function closeDevModal(event) {
+            document.getElementById('dev-modal').classList.remove('active');
+        }
+
+        function renderDevModalUI() {
+            const currentSpeed = game.speedMultiplier;
+            const speeds = [1, 2, 5, 10, 50];
+            speeds.forEach(s => {
+                const btn = document.getElementById(`dev-speed-btn-${s}`);
+                if (btn) {
+                    if (s === currentSpeed) {
+                        btn.style.borderColor = 'var(--accent-yellow)';
+                        btn.style.color = 'var(--accent-yellow)';
+                        btn.style.background = 'rgba(245, 158, 11, 0.2)';
+                    } else {
+                        btn.style.borderColor = 'var(--panel-border)';
+                        btn.style.color = 'var(--text-main)';
+                        btn.style.background = 'transparent';
+                    }
+                }
+            });
+        }
+
+        let lastShopState = "";
+
+        function renderShopUI() {
+            const nextBitCost = getBitUnlockCost(game.ownedBits + 1);
+            // Structural state ONLY (excludes high-frequency game.cycles to prevent DOM node teardowns during ticks!)
+            const currentState = `${game.bytes}_${game.autoResetEnabled}_${game.autoResetActive}_${game.autoUnlockEnabled}_${game.autoUnlockActive}_${game.autoUnlockBufferPct}_${game.ownedBits}_${game.manualBitPurchases}_${game.completedByte1}_${game.byteClockUpgradeLevel}_${game.devMode}_${game.isPoweredOn}_${game.migrationTriggered}_${nextBitCost}`;
+            if (currentState === lastShopState) return;
+            lastShopState = currentState;
+
+            const shopGrid = document.getElementById('shop-grid');
+            let html = '';
+
+            // 1. Auto-Reset Module (Unlocks at 25 total cycles earned, Hides after reset on Bit 4 when migrated!)
+            const showAutoReset = (game.totalCyclesEarned >= 25n || game.autoResetEnabled || game.devMode) && !game.migrationTriggered;
+            if (showAutoReset) {
+                const isOwned = game.autoResetEnabled;
+                const isActive = game.autoResetActive;
+                const canAfford = game.cycles >= GAME_CONFIG.AUTO_RESET_COST;
+                html += `
+                    <div class="shop-card" style="border-color: var(--accent-green); ${isOwned ? (isActive ? 'background: rgba(16, 185, 129, 0.08);' : 'background: rgba(245, 158, 11, 0.08);') : ''}">
+                        <div>
+                            <div class="shop-title" style="${isOwned ? (isActive ? 'color: var(--accent-green);' : 'color: var(--accent-yellow);') : 'color: var(--accent-green);'}">
+                                ${isOwned ? (isActive ? '⚡ Auto-Reset Module [ACTIVE]' : '⏸️ Auto-Reset Module [INACTIVE]') : '⭐ Auto-Reset Module'}
+                            </div>
+                            <div class="shop-desc">Automates register reset upon reaching capacity. Enables continuous passive profit!</div>
+                        </div>
+                        <button class="action-btn ${isOwned && isActive ? 'primary-action' : ''}" id="shop-autoreset-btn" onclick="${isOwned ? 'game.toggleAutoResetActive()' : 'game.buyAutoReset()'}" ${!isOwned && !canAfford ? 'disabled' : ''}>
+                            ${isOwned ? (isActive ? '⚡ SET INACTIVE' : '▶️ SET ACTIVE') : `Buy (${GAME_CONFIG.AUTO_RESET_COST} Cycles)`}
+                        </button>
+                    </div>`;
+            }
+
+            // 2. AUTO-UNLOCK BITS MODULE (Requires >= 2 manual bit purchases!)
+            const showAutoUnlock = (game.manualBitPurchases >= 2 || game.autoUnlockEnabled || game.devMode);
+            if (showAutoUnlock) {
+                const isOwned = game.autoUnlockEnabled;
+                const isActive = game.autoUnlockActive;
+                const cost = GAME_CONFIG.AUTO_UNLOCK_COST;
+                const canAfford = game.cycles >= cost;
+
+                if (!isOwned) {
+                    html += `
+                        <div class="shop-card" style="border-color: var(--accent-green);">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div class="shop-title" style="color: var(--accent-green);">⭐ Auto-Unlock Bits Module</div>
+                                <span style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted);" id="shop-autounlock-buy-eta">READY</span>
+                            </div>
+                            <div class="shop-desc">Automates purchasing next bit depth upgrades with a customizable bank reserve buffer.</div>
+                            <button class="action-btn" id="shop-autounlock-buy-btn" onclick="game.buyAutoUnlock()" ${!canAfford ? 'disabled' : ''} style="border-color: var(--accent-green); color: var(--accent-green); margin-top: 4px;">
+                                Buy (${cost.toLocaleString()} Cycles)
+                            </button>
+                        </div>`;
+                } else {
+                    // INTERACTIVE MODULE CARD (Stays in Main Shop Panel)
+                    html += `
+                        <div class="shop-card" id="shop-autounlock-active-card" style="border-color: var(--accent-green); background: rgba(16, 185, 129, 0.15);">
+                            <div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div class="shop-title" style="color: var(--accent-green);">
+                                        ${isActive ? '⚡ Auto-Unlock Bits [ACTIVE]' : '⏸️ Auto-Unlock Bits [INACTIVE]'}
+                                    </div>
+                                    <button class="action-btn" onclick="game.toggleAutoUnlockActive()" style="padding: 2px 8px; font-size: 0.65rem; border-color: var(--accent-green); color: var(--accent-green);">
+                                        ${isActive ? 'PAUSE' : 'ENABLE'}
+                                    </button>
+                                </div>
+
+                                <div class="shop-desc" id="shop-autounlock-active-info" style="margin-top: 2px; font-size: 0.65rem;">
+                                    ${isActive ? 'Calculating...' : `Paused (Reserve Buffer: +${game.autoUnlockBufferPct}%)`}
+                                </div>
+
+                                <!-- BUFFER SLIDER -->
+                                <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                                    <span style="font-size: 0.62rem; color: var(--text-muted);">Buffer: 0%</span>
+                                    <input type="range" min="0" max="200" step="10" value="${game.autoUnlockBufferPct}" oninput="game.setAutoUnlockBufferPct(this.value)" style="flex: 1; accent-color: var(--accent-green); cursor: pointer;">
+                                    <span style="font-size: 0.62rem; color: var(--text-muted);">+${game.autoUnlockBufferPct}%</span>
+                                </div>
+                            </div>
+                        </div>`;
+                }
+            }
+
+            // 3. UNIFIED "UNLOCK NEXT BIT (BIT N)" SHOP CARD (Cycles Green Border)
+            const showManualUnlock = !(game.autoUnlockEnabled && game.autoUnlockActive);
+            const nextBitNum = game.ownedBits + 1;
+
+            if (showManualUnlock && nextBitNum <= 64) {
+                const cost = getBitUnlockCost(nextBitNum);
+                const canAfford = game.cycles >= cost;
+
+                html += `
+                    <div class="shop-card" style="border-color: var(--accent-green);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="shop-title" style="color: var(--accent-green);">Unlock Bit ${nextBitNum}</div>
+                            <span style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted);" id="shop-nextbit-eta">READY</span>
+                        </div>
+                        <div class="shop-desc">Expands capacity to ${(1n << BigInt(nextBitNum)) - 1n} Ticks.</div>
+
+                        <button class="action-btn" id="shop-nextbit-btn" onclick="game.buyNextBit()" ${!canAfford ? 'disabled' : ''} style="border-color: var(--accent-green); color: var(--accent-green); margin-top: 4px;">
+                            Unlock Bit ${nextBitNum} (${cost} Cycles)
+                        </button>
+                    </div>`;
+            }
+
+            // 4. BYTE-BASED SHOP UPGRADES (Bordered in Bytes Cyan: var(--accent-cyan))
+            if (game.completedByte1 || game.devMode) {
+                const level = game.byteClockUpgradeLevel;
+                const costBytes = 1n << BigInt(level);
+                const hzGain = 0.5 * Math.pow(2, level);
+                const canAfford = game.bytes >= costBytes;
+
+                html += `
+                    <div class="shop-card" style="border-color: var(--accent-cyan); background: rgba(56, 189, 248, 0.08);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="shop-title" style="color: var(--accent-cyan);">⚡ Double Clock Speed (Byte Tier ${level + 1})</div>
+                            <span style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--accent-cyan); font-weight: 700;">+${hzGain.toFixed(1)} Hz</span>
+                        </div>
+                        <div class="shop-desc">Boosts clock rate from ${game.clockHz.toFixed(2)} Hz → ${(game.clockHz + hzGain).toFixed(2)} Hz.</div>
+
+                        <button class="action-btn" id="shop-byte-clock-btn" onclick="game.buyByteClockUpgrade()" ${!canAfford ? 'disabled' : ''} style="border-color: var(--accent-cyan); color: var(--accent-cyan); margin-top: 4px;">
+                            ${canAfford ? `Upgrade (+${hzGain.toFixed(1)} Hz) (${costBytes} Byte${costBytes > 1n ? 's' : ''})` : `Requires ${costBytes} Byte${costBytes > 1n ? 's' : ''}`}
+                        </button>
+                    </div>`;
+            }
+
+            shopGrid.innerHTML = html;
+        }
+
+        // HIGH-FREQUENCY DYNAMIC SHOP UPDATER (Updates existing persistent DOM nodes without rebuilding innerHTML)
+        function updateShopDynamicValues() {
+            // 1. Auto-Reset Buy Button
+            const autoResetBtn = document.getElementById('shop-autoreset-btn');
+            if (autoResetBtn && !game.autoResetEnabled) {
+                autoResetBtn.disabled = game.cycles < GAME_CONFIG.AUTO_RESET_COST;
+            }
+
+            // 2. Auto-Unlock Purchase Card
+            const autoUnlockBuyBtn = document.getElementById('shop-autounlock-buy-btn');
+            if (autoUnlockBuyBtn && !game.autoUnlockEnabled) {
+                const cost = GAME_CONFIG.AUTO_UNLOCK_COST;
+                const canAfford = game.cycles >= cost;
+                const pct = Math.min(100, Math.floor(Number((game.cycles * 10000n) / cost) / 100));
+                const remaining = cost > game.cycles ? Number(cost - game.cycles) : 0;
+                const yieldPerSec = getCyclesPerSecond(game);
+                const etaSec = yieldPerSec > 0 ? (remaining / yieldPerSec) : Infinity;
+
+                autoUnlockBuyBtn.disabled = !canAfford;
+                autoUnlockBuyBtn.innerText = canAfford ? `Buy (${cost.toLocaleString()} Cycles)` : `Auto-Unlock (${game.cycles}/${cost.toLocaleString()} Cycles • ${pct}%)`;
+                autoUnlockBuyBtn.style.background = canAfford
+                    ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(56, 189, 248, 0.25))'
+                    : `linear-gradient(90deg, rgba(16, 185, 129, 0.2) ${pct}%, #1e293b ${pct}%)`;
+
+                const etaEl = document.getElementById('shop-autounlock-buy-eta');
+                if (etaEl) {
+                    etaEl.innerText = remaining === 0 ? 'READY' : (isFinite(etaSec) ? formatTimeSeconds(etaSec) : 'Available in ∞');
+                }
+            }
+
+            // 3. Auto-Unlock Active Card
+            const autoUnlockActiveInfo = document.getElementById('shop-autounlock-active-info');
+            if (autoUnlockActiveInfo && game.autoUnlockEnabled && game.autoUnlockActive) {
+                const nextBitNum = game.ownedBits + 1;
+                if (nextBitNum <= 64) {
+                    const baseCost = getBitUnlockCost(nextBitNum);
+                    const mult = 1.0 + (game.autoUnlockBufferPct / 100.0);
+                    const reqCycles = BigInt(Math.floor(Number(baseCost) * mult));
+                    const fillPct = Math.min(100, Math.floor(Number((game.cycles * 10000n) / reqCycles) / 100));
+
+                    const remaining = reqCycles > game.cycles ? Number(reqCycles - game.cycles) : 0;
+                    const yieldPerSec = getCyclesPerSecond(game);
+                    const etaSec = yieldPerSec > 0 ? (remaining / yieldPerSec) : Infinity;
+
+                    const etaStr = remaining === 0 ? 'READY!' : (isFinite(etaSec) ? formatTimeSeconds(etaSec) : '∞');
+                    autoUnlockActiveInfo.innerText = `Next: Bit ${nextBitNum} (${baseCost} Cycles) • Target: ${reqCycles} Cycles (${etaStr})`;
+
+                    const activeCard = document.getElementById('shop-autounlock-active-card');
+                    if (activeCard) {
+                        activeCard.style.background = `linear-gradient(90deg, rgba(16, 185, 129, 0.15) ${fillPct}%, rgba(15, 23, 42, 0.85) ${fillPct}%)`;
+                    }
+                }
+            }
+
+            // 4. Manual Unlock Next Bit Card
+            const nextBitBtn = document.getElementById('shop-nextbit-btn');
+            if (nextBitBtn) {
+                const nextBitNum = game.ownedBits + 1;
+                if (nextBitNum <= 64) {
+                    const cost = getBitUnlockCost(nextBitNum);
+                    const canAfford = game.cycles >= cost;
+                    const pct = Math.min(100, Math.floor(Number((game.cycles * 10000n) / cost) / 100));
+                    const remaining = cost > game.cycles ? Number(cost - game.cycles) : 0;
+                    const yieldPerSec = getCyclesPerSecond(game);
+                    const etaSec = yieldPerSec > 0 ? (remaining / yieldPerSec) : Infinity;
+
+                    nextBitBtn.disabled = !canAfford;
+                    nextBitBtn.innerText = canAfford ? `Unlock Bit ${nextBitNum} (${cost} Cycles)` : `Bit ${nextBitNum} (${game.cycles}/${cost} Cycles • ${pct}%)`;
+                    nextBitBtn.style.background = canAfford
+                        ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(56, 189, 248, 0.25))'
+                        : `linear-gradient(90deg, rgba(16, 185, 129, 0.2) ${pct}%, #1e293b ${pct}%)`;
+
+                    const etaEl = document.getElementById('shop-nextbit-eta');
+                    if (etaEl) {
+                        etaEl.innerText = remaining === 0 ? 'READY' : (isFinite(etaSec) ? formatTimeSeconds(etaSec) : 'Available in ∞');
+                    }
+                }
+            }
+
+            // 5. Byte Clock Upgrade Button
+            const byteClockBtn = document.getElementById('shop-byte-clock-btn');
+            if (byteClockBtn) {
+                const level = game.byteClockUpgradeLevel;
+                const costBytes = 1n << BigInt(level);
+                const hzGain = 0.5 * Math.pow(2, level);
+                const canAfford = game.bytes >= costBytes;
+
+                byteClockBtn.disabled = !canAfford;
+                byteClockBtn.innerText = canAfford ? `Upgrade (+${hzGain.toFixed(1)} Hz) (${costBytes} Byte${costBytes > 1n ? 's' : ''})` : `Requires ${costBytes} Byte${costBytes > 1n ? 's' : ''}`;
+            }
+        }
+
+        // ITEM 4: AFK BACKGROUND TAB CATCHUP HANDLER
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && game.isPoweredOn && game.autoResetEnabled && game.autoResetActive) {
+                const now = performance.now();
+                const elapsedSec = (now - lastTime) / 1000;
+                lastTime = now;
+
+                if (elapsedSec > 2.0) {
+                    const ticksPerFill = game.ownedBits + 1;
+                    const fillsPerSec = game.clockHz / ticksPerFill;
+                    const afkFills = Math.floor(elapsedSec * fillsPerSec);
+                    const afkCycles = BigInt(afkFills) * game.cyclePayoutPerFill;
+
+                    if (afkCycles > 0n) {
+                        game.cycles += afkCycles;
+                        game.totalCyclesEarned += afkCycles;
+                        showTypeBVidi(`📟 WELCOME BACK! You earned +${afkCycles.toLocaleString()} Cycles while AFK (${formatTimeSeconds(elapsedSec)} away).`, null);
+                        updateUI();
+                    }
+                }
+            }
+        });
+
+        // =========================================================================
+        // 4. MAIN ENGINE LOOP
+        // =========================================================================
+        let lastTime = performance.now();
+
+        function mainLoop(currentTime) {
+            const dt = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            game.tick(dt);
+            updateUI();
+
+            requestAnimationFrame(mainLoop);
+        }
+
+        updateUI();
+        requestAnimationFrame(mainLoop);
+    </script>
+</body>
+
+</html>

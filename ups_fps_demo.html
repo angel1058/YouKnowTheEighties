@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FPS vs UPS Benchmark & Tuning Test</title>
+</head>
+<body>
+    <h1>FPS vs UPS Benchmark & Test Page</h1>
+    <p>Zero-styling diagnostic test for tuning Updates Per Second (UPS) and Frames Per Second (FPS).</p>
+
+    <hr>
+
+    <h2>Live Telemetry</h2>
+    <p><strong>Actual Frames Per Second (FPS - Screen Renders):</strong> <span id="fps-val">0</span></p>
+    <p><strong>Actual Updates Per Second (UPS - Logic Ticks):</strong> <span id="ups-val">0</span></p>
+
+    <hr>
+
+    <h2>Counter State</h2>
+    <p style="font-size: 24px; font-family: monospace;"><strong>Current Value:</strong> <span id="counter-val">0</span></p>
+
+    <hr>
+
+    <h2>Controls</h2>
+
+    <p>
+        <strong>Increment Amount (per logic tick):</strong> <span id="increment-val">1</span><br>
+        <button onclick="changeIncrement(-100000n)">-100,000</button>
+        <button onclick="changeIncrement(-1000n)">-1,000</button>
+        <button onclick="changeIncrement(-10n)">-10</button>
+        <button onclick="changeIncrement(-1n)">-1</button>
+        <button onclick="changeIncrement(1n)">+1</button>
+        <button onclick="changeIncrement(10n)">+10</button>
+        <button onclick="changeIncrement(1000n)">+1,000</button>
+        <button onclick="changeIncrement(100000n)">+100,000</button>
+    </p>
+
+    <p>
+        <strong>Target Updates Per Second (UPS Target):</strong> <span id="target-ups-val">60</span><br>
+        <button onclick="changeTargetUPS(-1000)">-1,000</button>
+        <button onclick="changeTargetUPS(-100)">-100</button>
+        <button onclick="changeTargetUPS(-10)">-10</button>
+        <button onclick="changeTargetUPS(-1)">-1</button>
+        <button onclick="changeTargetUPS(1)">+1</button>
+        <button onclick="changeTargetUPS(10)">+10</button>
+        <button onclick="changeTargetUPS(100)">+100</button>
+        <button onclick="changeTargetUPS(1000)">+1,000</button>
+    </p>
+
+    <p>
+        <strong>Render Throttling Mode:</strong><br>
+        <label><input type="radio" name="render-mode" value="raf" checked onclick="setRenderMode('raf')"> Decoupled requestAnimationFrame (Screen Renders at Monitor Refresh Rate ~60-144 FPS)</label><br>
+        <label><input type="radio" name="render-mode" value="inside-ups" onclick="setRenderMode('inside-ups')"> Naive (Render inside Logic Loop - Destroys quality at high UPS)</label>
+    </p>
+
+    <hr>
+
+    <h2>Explanation</h2>
+    <div id="explanation">
+        <p><strong>Decoupled Mode (Recommended):</strong> Game logic ticks independently in a fixed or high-frequency accumulator loop, while DOM screen updates are handled strictly by <code>requestAnimationFrame</code>. The screen never renders faster than the monitor can display, keeping animation smooth regardless of whether UPS is 10 or 10,000.</p>
+        <p><strong>Naive Mode (Anti-Pattern):</strong> Calls DOM render on every single logic update. When UPS exceeds 100+, this floods the browser with DOM reflows and string allocations, killing refresh quality and dropping FPS.</p>
+    </div>
+
+    <script>
+        // State Variables
+        let counter = 0n;
+        let increment = 1n;
+        let targetUPS = 60; // Desired logic updates per second
+        let renderMode = 'raf'; // 'raf' vs 'inside-ups'
+
+        // Measurement Telemetry
+        let frameCount = 0;
+        let updateCount = 0;
+        let actualFPS = 0;
+        let actualUPS = 0;
+
+        let lastTelemetryTime = performance.now();
+
+        // Control Functions
+        function changeIncrement(delta) {
+            increment += delta;
+            if (increment < 1n) increment = 1n;
+            document.getElementById('increment-val').innerText = increment.toLocaleString();
+        }
+
+        function changeTargetUPS(delta) {
+            targetUPS += delta;
+            if (targetUPS < 1) targetUPS = 1;
+            document.getElementById('target-ups-val').innerText = targetUPS.toLocaleString();
+        }
+
+        function setRenderMode(mode) {
+            renderMode = mode;
+        }
+
+        // Logic Tick (Game Update)
+        function logicTick() {
+            counter += increment;
+            updateCount++;
+
+            // Anti-Pattern Mode: Render DOM directly inside logic tick
+            if (renderMode === 'inside-ups') {
+                renderDOM();
+            }
+        }
+
+        // Render Function (DOM Update)
+        let lastRenderedFormattedStr = "";
+        function renderDOM() {
+            frameCount++;
+            const str = counter.toLocaleString();
+            // Dirty check to avoid unnecessary DOM writes if string hasn't changed
+            if (str !== lastRenderedFormattedStr) {
+                document.getElementById('counter-val').innerText = str;
+                lastRenderedFormattedStr = str;
+            }
+        }
+
+        // High-Precision Decoupled Logic Engine Loop
+        let lastLogicTime = performance.now();
+        let logicAccumulator = 0;
+
+        function runEngine() {
+            const now = performance.now();
+            const dt = now - lastLogicTime;
+            lastLogicTime = now;
+
+            // Telemetry calculation (once per second)
+            if (now - lastTelemetryTime >= 1000) {
+                actualFPS = frameCount;
+                actualUPS = updateCount;
+                frameCount = 0;
+                updateCount = 0;
+                lastTelemetryTime = now;
+
+                document.getElementById('fps-val').innerText = actualFPS;
+                document.getElementById('ups-val').innerText = actualUPS;
+            }
+
+            // Fixed step accumulator logic loop based on targetUPS
+            const stepMs = 1000 / targetUPS;
+            logicAccumulator += dt;
+
+            // Cap max catch-up steps to prevent spiral of death if tab loses focus
+            let steps = 0;
+            const maxStepsPerFrame = 500;
+
+            while (logicAccumulator >= stepMs && steps < maxStepsPerFrame) {
+                logicTick();
+                logicAccumulator -= stepMs;
+                steps++;
+            }
+
+            // Decoupled Render Loop (runs strictly via requestAnimationFrame)
+            if (renderMode === 'raf') {
+                renderDOM();
+            }
+
+            requestAnimationFrame(runEngine);
+        }
+
+        // Initialize UI & Start Engine
+        document.getElementById('increment-val').innerText = increment.toLocaleString();
+        document.getElementById('target-ups-val').innerText = targetUPS.toLocaleString();
+        requestAnimationFrame(runEngine);
+    </script>
+</body>
+</html>

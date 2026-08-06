@@ -1,0 +1,93 @@
+name: .NET MAUI iOS Cloud Build & Appetize Simulator
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-ios-simulator:
+    name: Build iOS Simulator (.app) for Appetize.io
+    runs-on: macos-14
+
+    steps:
+      - name: 1. Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 2. Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 3. Install MAUI iOS Workload
+        run: |
+          dotnet workload install maui-ios
+
+      - name: 4. Restore Dependencies
+        run: |
+          dotnet restore MauiTestFlightApp/MauiTestFlightApp.csproj
+
+      - name: 5. Build & Publish iOS Simulator App Bundle
+        run: |
+          dotnet publish MauiTestFlightApp/MauiTestFlightApp.csproj \
+            -f net8.0-ios \
+            -c Release \
+            -r iossimulator-arm64 \
+            /p:ArchiveOnBuild=false \
+            /p:SingleProject=true \
+            /p:PublishTrimmed=false \
+            -o output/
+
+      - name: 6. Package App for Appetize.io
+        run: |
+          cd output
+          zip -r ../MauiTestFlightApp-Simulator.zip MauiTestFlightApp.app
+
+      - name: 7. Upload Build Artifact to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: MauiTestFlightApp-Simulator
+          path: MauiTestFlightApp-Simulator.zip
+          retention-days: 14
+
+      - name: 8. Deploy to Appetize.io via API (Optional)
+        if: env.APPETIZE_API_TOKEN != ''
+        env:
+          APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+        run: |
+          echo "Uploading simulator build to Appetize.io..."
+          RESPONSE=$(curl --silent --location --request POST 'https://api.appetize.io/v1/apps' \
+            --header "Authorization: Bearer $APPETIZE_API_TOKEN" \
+            --form 'file=@"MauiTestFlightApp-Simulator.zip"' \
+            --form 'platform="ios"')
+          echo "Appetize.io Response: $RESPONSE"
+
+# ==============================================================================
+# FUTURE TESTFLIGHT DEPLOYMENT WORKFLOW (ENABLED WHEN READY FOR PHYSICAL IPHONE)
+# ==============================================================================
+# To switch back to TestFlight deployment on physical devices:
+# 1. Add your Apple Developer secrets to GitHub (APP_STORE_ISSUER_ID, APP_STORE_KEY_ID,
+#    APP_STORE_PRIVATE_KEY, BUILD_CERTIFICATE_BASE64, P12_PASSWORD, BUILD_PROVISION_PROFILE_BASE64).
+# 2. Change the target framework publish step to:
+#
+#   - name: Import Apple Certificate & Profile
+#     uses: apple-actions/import-codesign-certs@v3
+#     with:
+#       p12-file-base64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+#       p12-password: ${{ secrets.P12_PASSWORD }}
+#
+#   - name: Build & Publish iOS Signed IPA
+#     run: |
+#       dotnet publish MauiTestFlightApp/MauiTestFlightApp.csproj \
+#         -f net8.0-ios \
+#         -c Release \
+#         /p:ArchiveOnBuild=true \
+#         /p:EnableAssemblyTrimming=false
+#
+#   - name: Upload to Apple TestFlight
+#     uses: apple-actions/upload-testflight-build@v1
+#     with:
+#       app-path: 'MauiTestFlightApp/bin/Release/net8.0-ios/ios-arm64/publish/MauiTestFlightApp.ipa'
+#       issuer-id: ${{ secrets.APP_STORE_ISSUER_ID }}
+#       api-key-id: ${{ secrets.APP_STORE_KEY_ID }}
+#       api-key: ${{ secrets.APP_STORE_PRIVATE_KEY }}

@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chroma Canvas Engine - Pixel Mosaic Incremental</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(15, 23, 42, 0.85);
+            --panel-border: rgba(255, 255, 255, 0.1);
+            --accent-purple: #a855f7;
+            --accent-cyan: #38bdf8;
+            --accent-green: #10b981;
+            --accent-pink: #ec4899;
+            --accent-yellow: #f59e0b;
+            --accent-gold: #ffd700;
+            --accent-red: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(168, 85, 247, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(56, 189, 248, 0.15) 0px, transparent 50%);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            gap: 16px;
+        }
+
+        /* HEADER */
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 12px 20px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .title-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-badge {
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
+            color: #fff;
+            font-weight: 800;
+            font-size: 1rem;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-family: var(--font-mono);
+            letter-spacing: 1px;
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
+        }
+
+        .app-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #fff, var(--text-muted));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .select-input {
+            background: #0f172a;
+            border: 1px solid var(--panel-border);
+            color: var(--text-main);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .select-input:focus {
+            border-color: var(--accent-cyan);
+        }
+
+        /* MAIN SPLIT LAYOUT */
+        .game-layout {
+            display: grid;
+            grid-template-columns: 540px 1fr;
+            gap: 20px;
+            flex: 1;
+        }
+
+        @media (max-width: 1100px) {
+            .game-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* LEFT STAGE: CANVAS DISPLAY & PROGRESS */
+        .stage-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 20px;
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .stage-header {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+        }
+
+        .grid-badge {
+            background: rgba(56, 189, 248, 0.15);
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            color: var(--accent-cyan);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 500px;
+            height: 500px;
+            background: #060913;
+            border: 2px solid var(--panel-border);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8), 0 0 25px rgba(168, 85, 247, 0.15);
+            cursor: pointer;
+            user-select: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .canvas-container:hover {
+            border-color: var(--accent-purple);
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8), 0 0 30px rgba(168, 85, 247, 0.3);
+        }
+
+        #pixel-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        .canvas-overlay-progress {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .progress-label-row {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            height: 10px;
+            background: #0f172a;
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid var(--panel-border);
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-cyan));
+            width: 0%;
+            transition: width 0.08s linear;
+        }
+
+        .manual-paint-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(56, 189, 248, 0.25));
+            border: 1px solid var(--accent-purple);
+            color: #fff;
+            font-family: var(--font-sans);
+            font-weight: 700;
+            font-size: 0.95rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(168, 85, 247, 0.2);
+        }
+
+        .manual-paint-btn:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.4), rgba(56, 189, 248, 0.4));
+            box-shadow: 0 0 25px rgba(168, 85, 247, 0.5);
+        }
+
+        .manual-paint-btn:active {
+            transform: translateY(1px);
+        }
+
+        /* RIGHT DASHBOARD: CURRENCIES, SHOP, PRESTIGE & AUTOMATIONS */
+        .dashboard-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+        }
+
+        /* CURRENCY CARDS GRID */
+        .currency-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .currency-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            padding: 14px;
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .currency-title {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        .currency-value {
+            font-family: var(--font-mono);
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+        }
+
+        .currency-value.purple { color: var(--accent-purple); }
+        .currency-value.gold { color: var(--accent-gold); }
+        .currency-value.green { color: var(--accent-green); }
+
+        .currency-subtext {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+        }
+
+        /* SECTIONS & SHOP PANELS */
+        .section-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            padding: 16px;
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .section-header {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .shop-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 10px;
+        }
+
+        .shop-card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 8px;
+            transition: all 0.15s ease;
+        }
+
+        .shop-card:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            background: rgba(30, 41, 59, 0.8);
+        }
+
+        .shop-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .shop-desc {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            line-height: 1.3;
+        }
+
+        .shop-btn {
+            background: #1e293b;
+            border: 1px solid var(--panel-border);
+            color: var(--text-main);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-align: center;
+        }
+
+        .shop-btn:hover:not(:disabled) {
+            background: rgba(56, 189, 248, 0.2);
+            border-color: var(--accent-cyan);
+            color: #fff;
+        }
+
+        .shop-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .shop-btn.purchase-btn {
+            background: rgba(168, 85, 247, 0.2);
+            border-color: var(--accent-purple);
+            color: #fff;
+        }
+
+        .shop-btn.purchase-btn:hover:not(:disabled) {
+            background: rgba(168, 85, 247, 0.4);
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
+        }
+
+        /* TOGGLE BUTTONS */
+        .toggle-btn {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid var(--panel-border);
+            color: var(--text-muted);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .toggle-btn.active {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- HEADER -->
+    <header class="app-header">
+        <div class="title-group">
+            <div class="logo-badge">🎨 CHROMA</div>
+            <div class="app-title">Pixel Mosaic Engine</div>
+        </div>
+        <div class="header-controls">
+            <label for="format-select" style="font-size: 0.75rem; color: var(--text-muted);">Format:</label>
+            <select id="format-select" class="select-input" onchange="updateNumberFormatMode(this.value)">
+                <option value="commas" selected>Full Commas</option>
+                <option value="scientific">Scientific (1.84e19)</option>
+                <option value="engineering">Engineering (18.45e18)</option>
+                <option value="names">Short Names (18.45 M)</option>
+                <option value="hex">Hexadecimal (0xFF...)</option>
+            </select>
+        </div>
+    </header>
+
+    <!-- MAIN GAME LAYOUT -->
+    <div class="game-layout">
+        <!-- LEFT: CANVAS DISPLAY & STAGE -->
+        <div class="stage-panel">
+            <div class="stage-header">
+                <span>🎨 Active Mosaic Canvas</span>
+                <span class="grid-badge" id="grid-dim-label">10 × 10 (100 Pixels)</span>
+            </div>
+
+            <!-- HTML5 CANVAS -->
+            <div class="canvas-container" id="canvas-wrapper" onclick="game.manualPaintClick()">
+                <canvas id="pixel-canvas" width="500" height="500"></canvas>
+            </div>
+
+            <!-- OVERLAY PROGRESS BAR -->
+            <div class="canvas-overlay-progress">
+                <div class="progress-label-row">
+                    <span>Mosaic Fill Progress</span>
+                    <span id="canvas-progress-text" style="font-weight: bold; color: var(--accent-cyan);">0 / 100 (0.0%)</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="canvas-progress-bar"></div>
+                </div>
+            </div>
+
+            <button class="manual-paint-btn" onclick="game.manualPaintClick()">
+                <span>🖌️ Paint Random Pixel</span>
+                <span id="manual-power-label" style="font-family: var(--font-mono); font-size: 0.8rem; opacity: 0.85;">(+1 Block)</span>
+            </button>
+        </div>
+
+        <!-- RIGHT: TELEMETRY DASHBOARD, SHOP, PRESTIGE & AUTOMATIONS -->
+        <div class="dashboard-panel">
+            <!-- CURRENCY CARDS -->
+            <div class="currency-grid">
+                <div class="currency-card">
+                    <span class="currency-title">Pixel Shards</span>
+                    <span class="currency-value" id="stat-shards-val">0</span>
+                    <span class="currency-subtext" id="stat-fill-rate">+0.0 Pixels/sec</span>
+                </div>
+
+                <div class="currency-card">
+                    <span class="currency-title">Screen Hit / Miss Ratio</span>
+                    <span class="currency-value green" id="stat-ratio-val">1.00 : 1</span>
+                    <span class="currency-subtext" id="stat-ratio-subtext">Hits: 0 | Misses: 0 (100% Acc)</span>
+                </div>
+
+                <div class="currency-card">
+                    <span class="currency-title">All-Time Running Telemetry</span>
+                    <span class="currency-value purple" id="stat-alltime-ratio-val">1.00 : 1</span>
+                    <span class="currency-subtext" id="stat-alltime-ratio-subtext">Hits: 0 | Misses: 0 (100% Acc)</span>
+                </div>
+
+                <div class="currency-card">
+                    <span class="currency-title">Completed Masterpieces</span>
+                    <span class="currency-value purple" id="stat-masterpieces-val">0</span>
+                    <span class="currency-subtext">+1 per 100% Canvas Fill</span>
+                </div>
+
+                <div class="currency-card">
+                    <span class="currency-title">Chroma Crystals (Prestige)</span>
+                    <span class="currency-value gold" id="stat-crystals-val">0</span>
+                    <span class="currency-subtext" id="stat-chroma-multiplier">+0% Permanent Boost</span>
+                </div>
+            </div>
+
+            <!-- GENERATORS & UPGRADES SHOP -->
+            <div class="section-panel">
+                <div class="section-header">
+                    <span>🛒 Generator & Precision Upgrades</span>
+                    <span id="shop-count-label" style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted);">Available</span>
+                </div>
+                <div class="shop-grid" id="shop-grid">
+                    <!-- Dynamically populated shop items -->
+                </div>
+            </div>
+
+            <!-- PRESTIGE & GALLERY EXHIBITION -->
+            <div class="section-panel" style="border-color: rgba(255, 215, 0, 0.3);">
+                <div class="section-header" style="color: var(--accent-gold);">
+                    <span>🏆 Gallery Exhibition (Prestige)</span>
+                    <span id="prestige-reward-badge" style="font-family: var(--font-mono); color: var(--accent-gold);">+0 Chroma Crystals</span>
+                </div>
+                <p style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
+                    Reset canvas grid dimensions back to <strong id="reset-dim-label">10 × 10</strong> in exchange for permanent <strong style="color: var(--accent-gold);">Chroma Crystals</strong>. Each crystal grants <strong style="color: var(--accent-gold);">+25% global fill speed & shard multiplier</strong>!
+                </p>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                    <span style="font-size: 0.72rem; font-family: var(--font-mono); color: var(--text-muted);" id="prestige-req-label">Requires Grid 15×15</span>
+                    <button class="shop-btn purchase-btn" id="btn-prestige" onclick="game.executePrestige()" style="border-color: var(--accent-gold); color: var(--accent-gold);" disabled>
+                        Exhibit Gallery Reset (+0 Crystals)
+                    </button>
+                </div>
+            </div>
+
+            <!-- AUTOMATIONS & TARGETS -->
+            <div class="section-panel">
+                <div class="section-header">
+                    <span>🔄 Automations & Studio Controls</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+                    <button class="toggle-btn active" id="btn-auto-advance" onclick="game.toggleAutoAdvance()">
+                        Auto-Advance Canvas: ON
+                    </button>
+                    <button class="toggle-btn" id="btn-auto-buy" onclick="game.toggleAutoBuy()">
+                        Auto-Buy Shop: OFF
+                    </button>
+                    <button class="toggle-btn" id="btn-auto-prestige" onclick="game.toggleAutoPrestige()">
+                        Auto-Prestige: OFF
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // 1. NUMBER FORMATTER UTILITY
+        // =========================================================================
+        class NumberFormatter {
+            constructor() {
+                this.currentMode = 'commas';
+            }
+
+            setMode(mode) {
+                this.currentMode = mode;
+            }
+
+            format(value) {
+                const bigVal = typeof value === 'bigint' ? value : BigInt(Math.floor(value));
+
+                if (this.currentMode === 'hex') {
+                    return '0x' + bigVal.toString(16).toUpperCase();
+                }
+
+                if (bigVal < 1000000n) {
+                    return bigVal.toLocaleString();
+                }
+
+                const str = bigVal.toString();
+                const len = str.length;
+
+                switch (this.currentMode) {
+                    case 'scientific': {
+                        if (bigVal === 0n) return '0.00e0';
+                        const exp = len - 1;
+                        const mantissa = (Number(str.substring(0, 4)) / Math.pow(10, Math.min(3, len - 1))).toFixed(2);
+                        return `${mantissa}e${exp}`;
+                    }
+
+                    case 'engineering': {
+                        if (bigVal === 0n) return '0.00e0';
+                        const exp = len - 1;
+                        const engExp = Math.floor(exp / 3) * 3;
+                        const rem = exp - engExp;
+                        const digitsNeeded = rem + 3;
+                        const sliceStr = str.substring(0, digitsNeeded);
+                        const mantissa = (Number(sliceStr) / Math.pow(10, digitsNeeded - 1 - rem)).toFixed(2);
+                        return `${mantissa}e${engExp}`;
+                    }
+
+                    case 'names': {
+                        const units = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
+                        if (bigVal === 0n) return '0';
+                        const i = Math.floor((len - 1) / 3);
+                        if (i > 0 && i < units.length) {
+                            const rem = (len - 1) % 3;
+                            const digitsNeeded = rem + 3;
+                            const sliceStr = str.substring(0, digitsNeeded);
+                            const mantissa = (Number(sliceStr) / Math.pow(10, digitsNeeded - 1 - rem)).toFixed(2);
+                            return `${mantissa} ${units[i]}`;
+                        }
+                        const exp = len - 1;
+                        const mantissa = (Number(str.substring(0, 4)) / Math.pow(10, Math.min(3, len - 1))).toFixed(2);
+                        return `${mantissa}e${exp}`;
+                    }
+
+                    case 'commas':
+                    default:
+                        return bigVal.toLocaleString();
+                }
+            }
+        }
+
+        const formatter = new NumberFormatter();
+
+        function updateNumberFormatMode(mode) {
+            formatter.setMode(mode);
+            updateUI();
+        }
+
+        // =========================================================================
+        // 2. CORE GAME ENGINE & HTML5 CANVAS CONTROLLER
+        // =========================================================================
+        class GameEngine {
+            constructor() {
+                this.gridSize = 10; // Starts at 10x10
+                this.maxGridSize = 1000;
+                this.filledPixels = 0;
+
+                // Fast Unfilled Pixel Tracker
+                this.unfilledIndices = [];
+                this.pixelColors = [];
+
+                // Hit / Miss Accuracy Telemetry (Per-Screen & All-Time Running Total)
+                this.totalAttemptsThisRun = 0;
+                this.hitsThisRun = 0;
+                this.missesThisRun = 0;
+
+                this.allTimeAttempts = 0n;
+                this.allTimeHits = 0n;
+                this.allTimeMisses = 0n;
+
+                // Currencies
+                this.shards = 0n;
+                this.masterpieces = 0n;
+                this.chromaCrystals = 0n;
+
+                // Shop Items & Upgrades
+                this.shop = {
+                    brushPower: { name: "Manual Brush Stroke", level: 0, baseCost: 10n, costMult: 2n, desc: "Increases pixels filled per manual click (+1, +2, +5...)." },
+                    autoBrush: { name: "Auto Plotter Brush", level: 0, baseCost: 25n, costMult: 2n, desc: "Auto-paints pixels continuously (+1 pixel/sec per level)." },
+                    smartScanner: { name: "Precision Target Scanner", level: 0, baseCost: 50n, costMult: 3n, desc: "Reroutes over-paint misses to unpainted pixels (+20% reroute chance per level, 100% max)." },
+                    colorLayering: { name: "Multi-Coat Glaze", level: 0, baseCost: 30n, costMult: 2n, desc: "Re-painting an already filled pixel awards extra Shards (+1x per level)." },
+                    sprayRoller: { name: "Paint Spray Roller", level: 0, baseCost: 100n, costMult: 3n, desc: "Fills large clusters of pixels in rapid spray bursts (+5 pixels/sec per level)." },
+                    paintCannon: { name: "Chroma Paint Cannon", level: 0, baseCost: 500n, costMult: 4n, desc: "Fires massive paint salvos (+25 pixels/sec per level)." },
+                    critPalette: { name: "Neon Crit Palette", level: 0, baseCost: 200n, costMult: 5n, desc: "Increases chance for rare Golden/Neon pixels yielding 10x Shards." },
+                    speedBoost: { name: "Canvas Accelerator", level: 0, baseCost: 1000n, costMult: 5n, desc: "Multiplies overall fill tick rate by 1.5x per level." }
+                };
+
+                // Automations
+                this.autoAdvance = true;
+                this.autoBuy = false;
+                this.autoPrestige = false;
+                this.autoPrestigeTargetGrid = 25;
+
+                // Accumulator & Loop Timers
+                this.autoAccumulator = 0.0;
+                this.hueOffset = Math.floor(Math.random() * 360);
+
+                // Init First Grid
+                this.initGrid(this.gridSize);
+            }
+
+            initGrid(size) {
+                this.gridSize = size;
+                const total = size * size;
+                this.filledPixels = 0;
+                this.unfilledIndices = new Array(total);
+                this.pixelColors = new Array(total);
+
+                this.totalAttemptsThisRun = 0;
+                this.hitsThisRun = 0;
+                this.missesThisRun = 0;
+
+                for (let i = 0; i < total; i++) {
+                    this.unfilledIndices[i] = i;
+                    this.pixelColors[i] = null;
+                }
+
+                // Random hue theme for this grid
+                this.hueOffset = (this.hueOffset + 45) % 360;
+                renderCanvas(this);
+            }
+
+            getClickPower() {
+                return BigInt(1 + this.shop.brushPower.level * 2);
+            }
+
+            getAutoFillRate() {
+                let rate = (this.shop.autoBrush.level * 1.0) + (this.shop.sprayRoller.level * 5.0) + (this.shop.paintCannon.level * 25.0);
+                // Canvas Accelerator Multiplier (1.5x per level)
+                const speedMult = Math.pow(1.5, this.shop.speedBoost.level);
+                // Chroma Crystals Multiplier (+25% per crystal)
+                const crystalMult = 1.0 + (Number(this.chromaCrystals) * 0.25);
+                return rate * speedMult * crystalMult;
+            }
+
+            getCritChance() {
+                return 0.05 + (this.shop.critPalette.level * 0.05); // Base 5% -> 10% -> 15%
+            }
+
+            getRandomPastelColor() {
+                const isCrit = Math.random() < this.getCritChance();
+                if (isCrit) {
+                    return { color: '#ffd700', isCrit: true }; // Golden Crit Pixel
+                }
+                const h = (this.hueOffset + Math.floor(Math.random() * 60) - 30 + 360) % 360;
+                const s = 65 + Math.floor(Math.random() * 20); // 65-85% pastel saturation
+                const l = 75 + Math.floor(Math.random() * 15); // 75-90% lightness
+                return { color: `hsl(${h}, ${s}%, ${l}%)`, isCrit: false };
+            }
+
+            fillPixels(count) {
+                if (this.unfilledIndices.length === 0) return 0;
+
+                const totalPixelsInGrid = this.gridSize * this.gridSize;
+                let shardsGained = 0n;
+                const crystalMult = 1n + (this.chromaCrystals / 4n); // +25% shards per crystal
+
+                // Reroute Chance from Smart Scanner (0% -> 20% -> 40% -> 60% -> 80% -> 100%)
+                const rerouteChance = Math.min(1.0, this.shop.smartScanner.level * 0.20);
+
+                for (let k = 0; k < count; k++) {
+                    if (this.unfilledIndices.length === 0) break;
+
+                    this.totalAttemptsThisRun++;
+                    this.allTimeAttempts++;
+
+                    // True Random (X, Y) Index
+                    let pixelIdx = Math.floor(Math.random() * totalPixelsInGrid);
+                    let isHit = false;
+
+                    if (this.pixelColors[pixelIdx] === null) {
+                        // DIRECT HIT on an unpainted pixel
+                        isHit = true;
+                    } else {
+                        // MISS / OVER-PAINT! Check if Smart Scanner reroutes to an unpainted pixel
+                        if (Math.random() < rerouteChance && this.unfilledIndices.length > 0) {
+                            const randIdx = Math.floor(Math.random() * this.unfilledIndices.length);
+                            pixelIdx = this.unfilledIndices[randIdx];
+                            isHit = true;
+                        }
+                    }
+
+                    if (isHit) {
+                        // Remove from unfilledIndices array
+                        const posInUnfilled = this.unfilledIndices.indexOf(pixelIdx);
+                        if (posInUnfilled !== -1) {
+                            const lastIdx = this.unfilledIndices.length - 1;
+                            this.unfilledIndices[posInUnfilled] = this.unfilledIndices[lastIdx];
+                            this.unfilledIndices.pop();
+                        }
+
+                        // Paint new pixel
+                        const colorData = this.getRandomPastelColor();
+                        this.pixelColors[pixelIdx] = colorData.color;
+                        this.filledPixels++;
+                        this.hitsThisRun++;
+                        this.allTimeHits++;
+
+                        const pixelValue = colorData.isCrit ? 10n : 1n;
+                        shardsGained += pixelValue * crystalMult;
+                    } else {
+                        // MISS / OVER-PAINT: Re-painting existing pixel
+                        this.missesThisRun++;
+                        this.allTimeMisses++;
+                        const layeringBonus = BigInt(1 + this.shop.colorLayering.level);
+                        shardsGained += layeringBonus * crystalMult;
+                    }
+                }
+
+                this.shards += shardsGained;
+                renderCanvas(this);
+
+                // Check 100% Completion
+                if (this.unfilledIndices.length === 0) {
+                    this.onGridComplete();
+                }
+
+                updateUI();
+                return count;
+            }
+
+            manualPaintClick() {
+                const count = Number(this.getClickPower());
+                this.fillPixels(count);
+            }
+
+            onGridComplete() {
+                this.masterpieces += 1n;
+                // Burst Particle Wave Animation
+                triggerCompletionWave();
+
+                if (this.autoAdvance && this.gridSize < this.maxGridSize) {
+                    setTimeout(() => {
+                        this.initGrid(this.gridSize + 1);
+                    }, 150);
+                }
+            }
+
+            canPrestige() {
+                return this.gridSize >= 15;
+            }
+
+            getPrestigeCrystalsYield() {
+                if (!this.canPrestige()) return 0n;
+                const baseCrystals = BigInt(Math.floor((this.gridSize * this.gridSize) / 100));
+                return baseCrystals;
+            }
+
+            executePrestige() {
+                if (!this.canPrestige()) return false;
+                const yieldCrystals = this.getPrestigeCrystalsYield();
+                this.chromaCrystals += yieldCrystals;
+
+                // Reset grid back to 10x10
+                this.initGrid(10);
+                updateUI();
+                return true;
+            }
+
+            getShopCost(key) {
+                const item = this.shop[key];
+                if (!item) return 0n;
+                let cost = item.baseCost;
+                for (let i = 0; i < item.level; i++) {
+                    cost *= item.costMult;
+                }
+                return cost;
+            }
+
+            canBuyShopItem(key) {
+                return this.shards >= this.getShopCost(key);
+            }
+
+            buyShopItem(key) {
+                if (!this.canBuyShopItem(key)) return false;
+                const cost = this.getShopCost(key);
+                this.shards -= cost;
+                this.shop[key].level += 1;
+                updateUI();
+                return true;
+            }
+
+            toggleAutoAdvance() {
+                this.autoAdvance = !this.autoAdvance;
+                updateUI();
+            }
+
+            toggleAutoBuy() {
+                this.autoBuy = !this.autoBuy;
+                updateUI();
+            }
+
+            toggleAutoPrestige() {
+                this.autoPrestige = !this.autoPrestige;
+                updateUI();
+            }
+
+            tick(dt) {
+                // Auto-Fill Generators
+                const autoRate = this.getAutoFillRate();
+                if (autoRate > 0) {
+                    this.autoAccumulator += autoRate * dt;
+                    if (this.autoAccumulator >= 1.0) {
+                        const count = Math.floor(this.autoAccumulator);
+                        this.autoAccumulator -= count;
+                        this.fillPixels(count);
+                    }
+                }
+
+                // Auto-Buy Logic
+                if (this.autoBuy) {
+                    for (const key in this.shop) {
+                        if (this.canBuyShopItem(key)) {
+                            this.buyShopItem(key);
+                        }
+                    }
+                }
+
+                // Auto-Prestige Logic
+                if (this.autoPrestige && this.canPrestige() && this.gridSize >= this.autoPrestigeTargetGrid) {
+                    this.executePrestige();
+                }
+            }
+        }
+
+        // =========================================================================
+        // 3. HTML5 CANVAS RENDERER & VISUAL EFFECTS
+        // =========================================================================
+        function renderCanvas(engine) {
+            if (!engine) return;
+            const canvas = document.getElementById('pixel-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            const size = engine.gridSize;
+            const total = size * size;
+            const tileSize = canvas.width / size;
+
+            ctx.fillStyle = '#060913';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.imageSmoothingEnabled = false;
+
+            for (let i = 0; i < total; i++) {
+                const color = engine.pixelColors[i];
+                if (color) {
+                    const row = Math.floor(i / size);
+                    const col = i % size;
+                    const x = col * tileSize;
+                    const y = row * tileSize;
+
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x, y, tileSize, tileSize);
+
+                    // Cell borders for low-density grids (< 50x50)
+                    if (size <= 50) {
+                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+                        ctx.lineWidth = 0.5;
+                        ctx.strokeRect(x, y, tileSize, tileSize);
+                    }
+                }
+            }
+        }
+
+        function triggerCompletionWave() {
+            const wrapper = document.getElementById('canvas-wrapper');
+            wrapper.style.borderColor = 'var(--accent-gold)';
+            wrapper.style.boxShadow = '0 0 45px rgba(255, 215, 0, 0.8)';
+
+            setTimeout(() => {
+                wrapper.style.borderColor = 'var(--panel-border)';
+                wrapper.style.boxShadow = 'inset 0 0 20px rgba(0, 0, 0, 0.8), 0 0 25px rgba(168, 85, 247, 0.15)';
+            }, 300);
+        }
+
+        // =========================================================================
+        // 4. UI CONTROLLER & RENDERER
+        // =========================================================================
+        function updateUI() {
+            const size = game.gridSize;
+            const total = size * size;
+            const filled = game.filledPixels;
+            const pct = ((filled / total) * 100).toFixed(1);
+
+            document.getElementById('grid-dim-label').innerText = `${size} × ${size} (${formatter.format(BigInt(total))} Pixels)`;
+            document.getElementById('canvas-progress-text').innerText = `${formatter.format(BigInt(filled))} / ${formatter.format(BigInt(total))} (${pct}%)`;
+            document.getElementById('canvas-progress-bar').style.width = `${pct}%`;
+
+            document.getElementById('manual-power-label').innerText = `(+${game.getClickPower()} Block${game.getClickPower() > 1n ? 's' : ''})`;
+
+            // Currencies
+            document.getElementById('stat-shards-val').innerText = formatter.format(game.shards);
+            document.getElementById('stat-fill-rate').innerText = `+${game.getAutoFillRate().toFixed(1)} Pixels/sec`;
+
+            // Hit / Miss Ratio Telemetry (Per-Screen)
+            const currAttempts = game.totalAttemptsThisRun;
+            const currHits = game.hitsThisRun;
+            const currMisses = game.missesThisRun;
+            const currAcc = currAttempts > 0 ? ((currHits / currAttempts) * 100).toFixed(1) : '100.0';
+            const currRatio = currMisses > 0 ? `${(currHits / currMisses).toFixed(2)} : 1` : (currHits > 0 ? `${currHits} : 0` : '1.00 : 1');
+            const scannerPct = Math.min(100, game.shop.smartScanner.level * 20);
+
+            document.getElementById('stat-ratio-val').innerText = currRatio;
+            document.getElementById('stat-ratio-subtext').innerText = `Hits: ${formatter.format(BigInt(currHits))} | Misses: ${formatter.format(BigInt(currMisses))} (${currAcc}% Acc, ${scannerPct}% Lock)`;
+
+            // Hit / Miss Ratio Telemetry (All-Time Running Total)
+            const allAttempts = game.allTimeAttempts;
+            const allHits = game.allTimeHits;
+            const allMisses = game.allTimeMisses;
+            const allAcc = allAttempts > 0n ? ((Number(allHits) / Number(allAttempts)) * 100).toFixed(1) : '100.0';
+            const allRatio = allMisses > 0n ? `${(Number(allHits) / Number(allMisses)).toFixed(2)} : 1` : (allHits > 0n ? `${formatter.format(allHits)} : 0` : '1.00 : 1');
+
+            document.getElementById('stat-alltime-ratio-val').innerText = allRatio;
+            document.getElementById('stat-alltime-ratio-subtext').innerText = `Total Hits: ${formatter.format(allHits)} | Misses: ${formatter.format(allMisses)} (${allAcc}% Acc)`;
+
+            document.getElementById('stat-masterpieces-val').innerText = formatter.format(game.masterpieces);
+            document.getElementById('stat-crystals-val').innerText = formatter.format(game.chromaCrystals);
+            document.getElementById('stat-chroma-multiplier').innerText = `+${Number(game.chromaCrystals) * 25}% Fill & Shard Boost`;
+
+            // Prestige UI
+            const canPrestige = game.canPrestige();
+            const yieldCrystals = game.getPrestigeCrystalsYield();
+            document.getElementById('prestige-reward-badge').innerText = `+${formatter.format(yieldCrystals)} Chroma Crystals`;
+            document.getElementById('btn-prestige').disabled = !canPrestige;
+            document.getElementById('btn-prestige').innerText = `Exhibit Gallery Reset (+${formatter.format(yieldCrystals)} Crystals)`;
+
+            // Automations Buttons
+            document.getElementById('btn-auto-advance').className = `toggle-btn ${game.autoAdvance ? 'active' : ''}`;
+            document.getElementById('btn-auto-advance').innerText = `Auto-Advance Canvas: ${game.autoAdvance ? 'ON' : 'OFF'}`;
+
+            document.getElementById('btn-auto-buy').className = `toggle-btn ${game.autoBuy ? 'active' : ''}`;
+            document.getElementById('btn-auto-buy').innerText = `Auto-Buy Shop: ${game.autoBuy ? 'ON' : 'OFF'}`;
+
+            document.getElementById('btn-auto-prestige').className = `toggle-btn ${game.autoPrestige ? 'active' : ''}`;
+            document.getElementById('btn-auto-prestige').innerText = `Auto-Prestige (Grid ${game.autoPrestigeTargetGrid}): ${game.autoPrestige ? 'ON' : 'OFF'}`;
+
+            // Render Shop UI
+            renderShopUI();
+        }
+
+        function renderShopUI() {
+            const shopGrid = document.getElementById('shop-grid');
+            let html = '';
+
+            for (const key in game.shop) {
+                const item = game.shop[key];
+                const cost = game.getShopCost(key);
+                const canAfford = game.canBuyShopItem(key);
+                const isPurchased = item.level > 0;
+
+                const btnText = isPurchased ?
+                    `Lvl ${item.level + 1} (${formatter.format(cost)} Shards)` :
+                    `Purchase (${formatter.format(cost)} Shards)`;
+
+                const levelBadge = isPurchased ?
+                    `<span style="font-family: var(--font-mono); font-weight: bold; color: var(--accent-cyan);">Lvl ${item.level}</span>` :
+                    `<span style="font-family: var(--font-mono); color: var(--text-muted);">[Not Owned]</span>`;
+
+                html += `
+                    <div class="shop-card">
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span class="shop-title">${item.name}</span>
+                                ${levelBadge}
+                            </div>
+                            <div class="shop-desc" style="margin-top: 4px;">${item.desc}</div>
+                        </div>
+                        <button class="shop-btn ${isPurchased ? 'purchase-btn' : ''}" onclick="game.buyShopItem('${key}')" ${!canAfford ? 'disabled' : ''}>
+                            ${btnText}
+                        </button>
+                    </div>`;
+            }
+
+            if (shopGrid.dataset.lastHtml !== html) {
+                shopGrid.innerHTML = html;
+                shopGrid.dataset.lastHtml = html;
+            }
+        }
+
+        // Initialize Engine & Game Loop
+        const game = new GameEngine();
+        let lastTime = performance.now();
+
+        function gameLoop(currentTime) {
+            const dt = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            game.tick(dt);
+            requestAnimationFrame(gameLoop);
+        }
+
+        updateUI();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+
+</html>
