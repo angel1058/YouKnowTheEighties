@@ -1,5 +1,5 @@
 // ============================================================================
-// SO YOU THINK YOU KNOW 80s MUSIC! - GAME ENGINE V5 (DEV LEVEL PICKER & DEEP MODE)
+// SO YOU THINK YOU KNOW 80s MUSIC! - GAME ENGINE V6 (TITLE CLEANING & DE-DUPING)
 // ============================================================================
 
 let songsMap = {};          // id -> { id, t: title, a: artist, g: genres, ls: leadSinger, mb: members, highestPos... }
@@ -10,6 +10,10 @@ let currentWeek = null;
 let currentChartModalWeekIndex = 0;
 let selectedAnswerIndex = null;
 let answerRevealed = false;
+
+// Question De-duplication History
+let sessionQuestionHistory = new Set();
+const MAX_HISTORY_SIZE = 40;
 
 // Timer Mode & Bonus Points State
 let bonusTimerInterval = null;
@@ -22,12 +26,12 @@ let state = {
     avatar: '🕹️',
     score: 0,
     currentLevel: 1,
-    unlockedLevel: 6, // Unlocked all levels for testing/preview!
+    unlockedLevel: 6, // Dev mode: unlocked all levels
     strikes: 0,
     lifelines5050: 3,
     cooldownEndTime: 0,
     timerModeEnabled: false,
-    deepModeEnabled: false, // High Risk / High Reward 3x Points Mode
+    deepModeEnabled: false,
     tonedDownTheme: false
 };
 
@@ -41,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ----------------------------------------------------------------------------
-// 1. DATA PARSING & EXACT DATE FORMATTING
+// 1. DATA PARSING & TITLE CLEANING
 // ----------------------------------------------------------------------------
 async function loadChartData() {
     const progressEl = document.getElementById('splash-progress');
@@ -55,13 +59,13 @@ async function loadChartData() {
         const data = await response.json();
 
         if (progressEl) progressEl.style.width = '55%';
-        if (statusEl) statusEl.textContent = 'Parsing Band Members, Lead Singers & Consensus Genres...';
+        if (statusEl) statusEl.textContent = 'Parsing Band Members, Lead Singers & Cleaning Titles...';
 
-        // Initialize Songs & Relational Map
         data.songs.forEach(song => {
             songsMap[song.id] = {
                 id: song.id,
                 t: song.t,
+                cleanT: cleanSongTitle(song.t), // Strips "FT ...", "FEATURING ...", etc.
                 a: song.a,
                 g: song.g || ["Pop Rock"],
                 ls: song.ls || song.a,
@@ -106,7 +110,7 @@ async function loadChartData() {
         });
 
         if (progressEl) progressEl.style.width = '100%';
-        if (statusEl) statusEl.textContent = `Loaded ${chartWeeks.length} chart weeks & enriched band relational data!`;
+        if (statusEl) statusEl.textContent = `Loaded ${chartWeeks.length} chart weeks!`;
 
         setTimeout(() => {
             document.getElementById('splash-screen').classList.add('hidden');
@@ -124,6 +128,15 @@ async function loadChartData() {
             document.getElementById('splash-screen').classList.add('hidden');
         }, 1500);
     }
+}
+
+// Clean song titles: strip "FT CHRISSIE HYNDE", "FEATURING ...", etc.
+function cleanSongTitle(rawTitle) {
+    if (!rawTitle) return '';
+    let cleaned = rawTitle;
+    cleaned = cleaned.replace(/\s+(FT|FEATURING|FEAT\.|WITH|AND)\s+.*/i, '');
+    cleaned = cleaned.replace(/\s*\([^)]*(FT|FEATURING|FEAT\.)[^)]*\)/i, '');
+    return cleaned.trim();
 }
 
 // Format exact YYYYMMDD date to "July 18th, 1984"
@@ -149,11 +162,30 @@ function getOrdinalSuffix(d) {
 }
 
 // ----------------------------------------------------------------------------
-// 2. QUESTION GENERATION ENGINE (LEVELS 1 - 6 + DEEP MODE)
+// 2. QUESTION GENERATION ENGINE (WITH DE-DUPLICATION & SANITIZATION)
 // ----------------------------------------------------------------------------
 function generateNextQuestion() {
     if (chartWeeks.length === 0) return;
     if (checkCooldownState()) return;
+
+    let attempts = 0;
+    let candidateQuestion = null;
+
+    while (attempts < 15) {
+        attempts++;
+        candidateQuestion = buildCandidateQuestion();
+
+        if (candidateQuestion && !sessionQuestionHistory.has(candidateQuestion.text)) {
+            sessionQuestionHistory.add(candidateQuestion.text);
+            if (sessionQuestionHistory.size > MAX_HISTORY_SIZE) {
+                const oldest = Array.from(sessionQuestionHistory)[0];
+                sessionQuestionHistory.delete(oldest);
+            }
+            break;
+        }
+    }
+
+    currentQuestion = candidateQuestion;
 
     // Reset UI & State
     selectedAnswerIndex = null;
@@ -172,32 +204,6 @@ function generateNextQuestion() {
         btn.disabled = false;
     }
 
-    const weekIndex = Math.floor(Math.random() * chartWeeks.length);
-    currentWeek = chartWeeks[weekIndex];
-    currentChartModalWeekIndex = weekIndex;
-
-    const level = state.currentLevel;
-    const typeRoll = Math.random();
-
-    if (level === 1) {
-        generateLevel1Question(currentWeek, weekIndex);
-    } else if (level === 2) {
-        generateLevel2Question(currentWeek, weekIndex);
-    } else if (level === 3) {
-        if (typeRoll > 0.5) generateLevel3Question(currentWeek, weekIndex);
-        else generateHighestPeakQuestion();
-    } else if (level === 4) {
-        if (typeRoll > 0.6) generateLevel4Question(currentWeek, weekIndex);
-        else if (typeRoll > 0.3) generateNeverNumberOneQuestion();
-        else generateWeeksInTop10Question();
-    } else if (level === 5) {
-        if (typeRoll > 0.5) generateGenreQuestion(currentWeek);
-        else generateLeadSingerAtNumber2Question(currentWeek);
-    } else {
-        if (typeRoll > 0.5) generateBandMemberLineupQuestion(currentWeek);
-        else generateMemberDepartureQuestion();
-    }
-
     renderQuestionUI();
 
     if (state.timerModeEnabled) {
@@ -207,21 +213,48 @@ function generateNextQuestion() {
     }
 }
 
-// Level 1: "Who sang..." (Top 2 Hits OR Deep Positions if Deep Mode ON)
+function buildCandidateQuestion() {
+    const weekIndex = Math.floor(Math.random() * chartWeeks.length);
+    currentWeek = chartWeeks[weekIndex];
+    currentChartModalWeekIndex = weekIndex;
+
+    const level = state.currentLevel;
+    const typeRoll = Math.random();
+
+    if (level === 1) {
+        return generateLevel1Question(currentWeek, weekIndex);
+    } else if (level === 2) {
+        return generateLevel2Question(currentWeek, weekIndex);
+    } else if (level === 3) {
+        if (typeRoll > 0.5) return generateLevel3Question(currentWeek, weekIndex);
+        else return generateHighestPeakQuestion();
+    } else if (level === 4) {
+        if (typeRoll > 0.6) return generateLevel4Question(currentWeek, weekIndex);
+        else if (typeRoll > 0.3) return generateNeverNumberOneQuestion();
+        else return generateWeeksInTop10Question();
+    } else if (level === 5) {
+        if (typeRoll > 0.5) return generateGenreQuestion(currentWeek);
+        else return generateLeadSingerAtNumber2Question(currentWeek);
+    } else {
+        if (typeRoll > 0.5) return generateBandMemberLineupQuestion(currentWeek);
+        else return generateMemberDepartureQuestion();
+    }
+}
+
+// Level 1: "Who sang..." (Top 2 Hits)
 function generateLevel1Question(week, weekIndex) {
-    // If Deep Mode enabled: pick positions #3 through #10!
     const pos = state.deepModeEnabled ? Math.floor(Math.random() * 8) + 2 : Math.floor(Math.random() * 2);
     const songId = week.positions[pos];
     const targetSong = songsMap[songId];
 
     const positionLabel = state.deepModeEnabled ? `at Number ${pos + 1}` : `in the Top 2`;
-    const questionText = `Who sang "${targetSong.t}" when it reached ${positionLabel} on ${week.exactDateFormatted}?`;
+    const questionText = `Who sang "${targetSong.cleanT}" when it reached ${positionLabel} on ${week.exactDateFormatted}?`;
     const correctAnswer = targetSong.a;
 
     const distractors = getSmartArtistDistractors(targetSong.a, week, pos);
     const options = assembleFourOptions(correctAnswer, distractors);
 
-    currentQuestion = {
+    return {
         level: 1,
         basePoints: 1,
         artistNamed: false,
@@ -245,35 +278,35 @@ function generateLevel2Question(week, weekIndex) {
     if (Math.random() > 0.5 && targetSong) {
         const rankText = (pos === 0) ? "Number 1" : `Number ${pos + 1}`;
         questionText = `Which song did ${targetSong.a} reach ${rankText} with on ${week.exactDateFormatted}?`;
-        correctAnswer = targetSong.t;
+        correctAnswer = targetSong.cleanT;
         artistNamed = true;
 
         const artistKey = targetSong.a.trim().toUpperCase();
         const sameArtistSongs = artistSongsMap[artistKey] || [];
         sameArtistSongs.forEach(s => {
-            if (s.t !== correctAnswer) distractors.add(s.t);
+            if (s.cleanT !== correctAnswer) distractors.add(s.cleanT);
         });
 
         [1, 2, 3, 4].forEach(p => {
-            if (week.positions[p]) distractors.add(songsMap[week.positions[p]].t);
+            if (week.positions[p]) distractors.add(songsMap[week.positions[p]].cleanT);
         });
     } else {
         const num2Song = songsMap[week.positions[1]];
         questionText = `Which song was held off top spot at Number 2 on ${week.exactDateFormatted}?`;
-        correctAnswer = `"${num2Song.t}" - ${num2Song.a}`;
+        correctAnswer = `"${num2Song.cleanT}" - ${num2Song.a}`;
         artistNamed = false;
 
         [0, 2, 3, 4].forEach(p => {
             if (week.positions[p]) {
                 const s = songsMap[week.positions[p]];
-                distractors.add(`"${s.t}" - ${s.a}`);
+                distractors.add(`"${s.cleanT}" - ${s.a}`);
             }
         });
     }
 
     const options = assembleFourOptions(correctAnswer, Array.from(distractors));
 
-    currentQuestion = {
+    return {
         level: 2,
         basePoints: 2,
         artistNamed: artistNamed,
@@ -290,13 +323,13 @@ function generateLevel3Question(week, weekIndex) {
     const songId = week.positions[pos];
     const targetSong = songsMap[songId];
 
-    const questionText = `Who sang "${targetSong.t}" when it reached Number ${pos + 1} on ${week.exactDateFormatted}?`;
+    const questionText = `Who sang "${targetSong.cleanT}" when it reached Number ${pos + 1} on ${week.exactDateFormatted}?`;
     const correctAnswer = targetSong.a;
 
     const distractors = getSmartArtistDistractors(targetSong.a, week, pos);
     const options = assembleFourOptions(correctAnswer, distractors);
 
-    currentQuestion = {
+    return {
         level: 3,
         basePoints: 3,
         artistNamed: false,
@@ -315,7 +348,7 @@ function generateHighestPeakQuestion() {
     if (!targetSong) return generateLevel3Question(currentWeek, 0);
 
     const peakPos = targetSong.highestPos;
-    const questionText = `What was the highest UK chart position reached by "${targetSong.t}" by ${targetSong.a}?`;
+    const questionText = `What was the highest UK chart position reached by "${targetSong.cleanT}" by ${targetSong.a}?`;
     const correctAnswer = `Number ${peakPos}`;
 
     const distractors = new Set();
@@ -325,7 +358,7 @@ function generateHighestPeakQuestion() {
 
     const options = assembleFourOptions(correctAnswer, Array.from(distractors));
 
-    currentQuestion = {
+    return {
         level: 3,
         basePoints: 3,
         artistNamed: true,
@@ -345,17 +378,17 @@ function generateNeverNumberOneQuestion() {
 
     const targetNever = neverNum1Songs[Math.floor(Math.random() * neverNum1Songs.length)];
     const questionText = `Which of these famous 80s songs NEVER got to Number 1 in the UK?`;
-    const correctAnswer = `"${targetNever.t}" - ${targetNever.a} (Peaked at #${targetNever.highestPos})`;
+    const correctAnswer = `"${targetNever.cleanT}" - ${targetNever.a} (Peaked at #${targetNever.highestPos})`;
 
     const distractors = new Set();
     while (distractors.size < 3) {
         const s = num1Songs[Math.floor(Math.random() * num1Songs.length)];
-        distractors.add(`"${s.t}" - ${s.a}`);
+        distractors.add(`"${s.cleanT}" - ${s.a}`);
     }
 
     const options = assembleFourOptions(correctAnswer, Array.from(distractors));
 
-    currentQuestion = {
+    return {
         level: 4,
         basePoints: 4,
         artistNamed: false,
@@ -374,7 +407,7 @@ function generateWeeksInTop10Question() {
     if (!targetSong) return generateLevel4Question(currentWeek, 0);
 
     const weeksCount = targetSong.weeksInTop10;
-    const questionText = `How many weeks did "${targetSong.t}" by ${targetSong.a} remain in the UK Top 10?`;
+    const questionText = `How many weeks did "${targetSong.cleanT}" by ${targetSong.a} remain in the UK Top 10?`;
     const correctAnswer = `${weeksCount} Weeks`;
 
     const distractors = new Set();
@@ -384,7 +417,7 @@ function generateWeeksInTop10Question() {
 
     const options = assembleFourOptions(correctAnswer, Array.from(distractors));
 
-    currentQuestion = {
+    return {
         level: 4,
         basePoints: 4,
         artistNamed: true,
@@ -400,20 +433,20 @@ function generateLevel4Question(week, weekIndex) {
     const num1Song = songsMap[week.positions[0]];
     const num2Song = songsMap[week.positions[1]];
 
-    const questionText = `Who did ${num1Song.a} knock off top spot on ${week.exactDateFormatted} with "${num1Song.t}"?`;
-    const correctAnswer = `"${num2Song.t}" - ${num2Song.a}`;
+    const questionText = `Who did ${num1Song.a} knock off top spot on ${week.exactDateFormatted} with "${num1Song.cleanT}"?`;
+    const correctAnswer = `"${num2Song.cleanT}" - ${num2Song.a}`;
 
     const distractors = new Set();
     [2, 3, 4, 5].forEach(p => {
         if (week.positions[p]) {
             const s = songsMap[week.positions[p]];
-            distractors.add(`"${s.t}" - ${s.a}`);
+            distractors.add(`"${s.cleanT}" - ${s.a}`);
         }
     });
 
     const options = assembleFourOptions(correctAnswer, Array.from(distractors));
 
-    currentQuestion = {
+    return {
         level: 4,
         basePoints: 4,
         artistNamed: false,
@@ -430,19 +463,19 @@ function generateGenreQuestion(week) {
     const genre = (num1Song.g && num1Song.g.length > 0) ? num1Song.g[0] : 'Synth-pop';
 
     const questionText = `Which ${genre} track peaked at Number 1 on ${week.exactDateFormatted}?`;
-    const correctAnswer = `"${num1Song.t}" - ${num1Song.a}`;
+    const correctAnswer = `"${num1Song.cleanT}" - ${num1Song.a}`;
 
     const sameGenreSongs = Object.values(songsMap).filter(s => s.g && s.g.includes(genre) && s.id !== num1Song.id);
     const distractors = new Set();
 
     while (distractors.size < 3 && sameGenreSongs.length > 0) {
         const randS = sameGenreSongs[Math.floor(Math.random() * sameGenreSongs.length)];
-        distractors.add(`"${randS.t}" - ${randS.a}`);
+        distractors.add(`"${randS.cleanT}" - ${randS.a}`);
     }
 
     const options = assembleFourOptions(correctAnswer, Array.from(distractors));
 
-    currentQuestion = {
+    return {
         level: 5,
         basePoints: 5,
         artistNamed: false,
@@ -469,7 +502,7 @@ function generateLeadSingerAtNumber2Question(week) {
     const distractors = famousSingers.filter(s => s !== correctAnswer);
     const options = assembleFourOptions(correctAnswer, distractors);
 
-    currentQuestion = {
+    return {
         level: 5,
         basePoints: 5,
         artistNamed: false,
@@ -480,9 +513,12 @@ function generateLeadSingerAtNumber2Question(week) {
     };
 }
 
-// Level 6: Band Lineups
+// Level 6: Band Lineups (Filter OUT solo artists where memberName == bandName!)
 function generateBandMemberLineupQuestion(week) {
-    const bandSongsInWeek = week.positions.map(id => songsMap[id]).filter(s => s.mb && s.mb.length > 0);
+    // Strictly filter songs to MULTI-MEMBER BANDS ONLY (where mb.length > 1 and artist name != lead singer name!)
+    const bandSongsInWeek = week.positions.map(id => songsMap[id]).filter(s => {
+        return s.mb && s.mb.length > 1 && s.a.trim().toUpperCase() !== s.ls.trim().toUpperCase();
+    });
     
     if (bandSongsInWeek.length === 0) return generateLeadSingerAtNumber2Question(week);
 
@@ -495,7 +531,7 @@ function generateBandMemberLineupQuestion(week) {
 
     const distractors = new Set();
     const berühmteBands = ["Depeche Mode", "Duran Duran", "The Police", "Spandau Ballet", 
-                           "Tears for Fears", "Human League", "Ultravox", "Madness", "The Clash", "Culture Club"];
+                           "Tears for Fears", "Human League", "Ultravox", "Madness", "The Clash", "Culture Club", "Wham!", "Fleetwood Mac"];
 
     berühmteBands.forEach(b => {
         if (b !== correctBand) distractors.add(b);
@@ -503,7 +539,7 @@ function generateBandMemberLineupQuestion(week) {
 
     const options = assembleFourOptions(correctAnswer, Array.from(distractors));
 
-    currentQuestion = {
+    return {
         level: 6,
         basePoints: 6,
         artistNamed: false,
@@ -533,12 +569,12 @@ function generateMemberDepartureQuestion() {
     const questionText = `Which prominent member left ${dep.band} in ${dep.year}?`;
     const correctAnswer = dep.leaver;
 
-    const famousSingers = ["Vince Clarke", "Limahl", "Nick Heyward", "Terry Hall", "Marc Almond", "Mick Jones", "George Michael", "Ian McCulloch"];
+    const famousSingers = ["Vince Clarke", "Limahl", "Nick Heyward", "Terry Hall", "Marc Almond", "Mick Jones", "George Michael", "Ian McCulloch", "Stevie Nicks", "Alison Moyet"];
     const distractors = famousSingers.filter(s => s !== correctAnswer);
 
     const options = assembleFourOptions(correctAnswer, distractors);
 
-    currentQuestion = {
+    return {
         level: 6,
         basePoints: 6,
         artistNamed: false,
@@ -575,7 +611,7 @@ function getSmartArtistDistractors(artistName, week, targetPos) {
 function assembleFourOptions(correct, distractorsList) {
     while (distractorsList.length < 3) {
         const randomSong = songsMap[Math.floor(Math.random() * Object.keys(songsMap).length) + 1];
-        if (randomSong && randomSong.a !== correct && randomSong.t !== correct) {
+        if (randomSong && randomSong.a !== correct && randomSong.cleanT !== correct) {
             distractorsList.push(randomSong.a);
         }
     }
@@ -737,7 +773,6 @@ function submitAnswer(selectedIndex) {
 
         checkLevelUnlocks();
     } else {
-        // High Risk Deep Mode penalty: 2 strikes instead of 1!
         const strikeCountAdd = state.deepModeEnabled ? 2 : 1;
         state.strikes += strikeCountAdd;
 
@@ -801,13 +836,13 @@ function renderChartModalWeek(idx) {
 
     listEl.innerHTML = top5Positions.map((songId, posIdx) => {
         const song = songsMap[songId];
-        const isHighlighted = (currentQuestion && (currentQuestion.options[currentQuestion.correctIndex].includes(song.t) || currentQuestion.options[currentQuestion.correctIndex].includes(song.a)));
+        const isHighlighted = (currentQuestion && (currentQuestion.options[currentQuestion.correctIndex].includes(song.cleanT) || currentQuestion.options[currentQuestion.correctIndex].includes(song.a)));
 
         return `
             <div class="chart-row ${isHighlighted ? 'highlight' : ''}">
                 <div class="chart-pos">#${posIdx + 1}</div>
                 <div class="chart-song-info">
-                    <div class="chart-title">${song.t}</div>
+                    <div class="chart-title">${song.cleanT}</div>
                     <div class="chart-artist">${song.a}</div>
                 </div>
             </div>
@@ -842,11 +877,9 @@ function applyTheme() {
 }
 
 function checkLevelUnlocks() {
-    // Unlocked all levels for testing/preview!
     state.unlockedLevel = 6;
 }
 
-// DEV LEVEL PICKER: Allows selecting ANY level (1 to 6) immediately!
 function selectLevel(lvl) {
     state.currentLevel = lvl;
     saveLocalState();
@@ -939,7 +972,6 @@ function updateUserUI() {
     document.getElementById('level-display').textContent = `Lvl ${state.currentLevel}`;
     document.getElementById('count-5050').textContent = state.lifelines5050;
 
-    // Update Timer Toggle UI
     const timerStatus = document.getElementById('timer-toggle-status');
     const btnTimerToggle = document.getElementById('btn-timer-toggle');
     const bonusBox = document.getElementById('bonus-timer-box');
@@ -954,7 +986,6 @@ function updateUserUI() {
         if (bonusBox) bonusBox.classList.add('hidden');
     }
 
-    // Update Deep Mode Toggle UI
     const deepStatus = document.getElementById('deep-toggle-status');
     const btnDeepToggle = document.getElementById('btn-deep-toggle');
 
@@ -1000,11 +1031,11 @@ function getLevelName(lvl) {
 }
 
 function saveLocalState() {
-    localStorage.setItem('80s_quiz_state_v5', JSON.stringify(state));
+    localStorage.setItem('80s_quiz_state_v6', JSON.stringify(state));
 }
 
 function loadLocalState() {
-    const saved = localStorage.getItem('80s_quiz_state_v5');
+    const saved = localStorage.getItem('80s_quiz_state_v6');
     if (saved) {
         try {
             state = { ...state, ...JSON.parse(saved) };
