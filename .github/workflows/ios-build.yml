@@ -19,13 +19,13 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: 3. Install MAUI iOS Workload
+      - name: 3. Install MAUI Workloads
         run: |
-          dotnet workload install maui-ios
+          dotnet workload restore MauiTestFlightApp/MauiTestFlightApp.csproj || dotnet workload install maui
 
       - name: 4. Restore Dependencies
         run: |
-          dotnet restore MauiTestFlightApp/MauiTestFlightApp.csproj
+          dotnet restore MauiTestFlightApp/MauiTestFlightApp.csproj -f net8.0-ios
 
       - name: 5. Build & Publish iOS Simulator App Bundle
         run: |
