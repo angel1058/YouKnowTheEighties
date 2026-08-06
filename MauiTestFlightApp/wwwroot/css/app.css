@@ -352,6 +352,12 @@ body {
     align-items: center;
 }
 
+.category-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
 .category-badge {
     font-family: var(--font-heading);
     font-size: 9px;
@@ -360,6 +366,7 @@ body {
 }
 
 .points-badge {
+    align-self: flex-start;
     background: rgba(255, 215, 0, 0.15);
     border: 1px solid var(--neon-gold);
     color: var(--neon-gold);
@@ -367,6 +374,62 @@ body {
     font-weight: 800;
     padding: 4px 10px;
     border-radius: 12px;
+}
+
+/* 10-Second Bonus Countdown Timer Ring */
+.bonus-timer-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: var(--bg-card-alt);
+    border: 2px solid var(--neon-gold);
+    border-radius: 14px;
+    padding: 6px 14px;
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.3);
+}
+
+.timer-ring-text {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    color: var(--neon-gold);
+}
+
+.bonus-badge {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--neon-green);
+}
+
+/* Lifelines Bar */
+.lifelines-bar {
+    display: flex;
+    gap: 8px;
+}
+
+.lifeline-btn {
+    flex: 1;
+    background: rgba(0, 240, 255, 0.1);
+    border: 1px solid var(--neon-cyan);
+    color: var(--neon-cyan);
+    font-family: var(--font-heading);
+    font-size: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.lifeline-btn:hover:not(:disabled) {
+    background: var(--neon-cyan);
+    color: black;
+    box-shadow: 0 0 12px var(--neon-cyan);
+}
+
+.lifeline-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border-color: #555;
+    color: #888;
 }
 
 .question-box {
@@ -459,17 +522,28 @@ body {
     border-color: var(--neon-red);
 }
 
+.answer-btn.eliminated {
+    opacity: 0.2;
+    pointer-events: none;
+}
+
 /* Feedback Banner */
 .feedback-banner {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 14px;
+    text-align: center;
+}
+
+.feedback-main {
+    display: flex;
+    align-items: center;
     gap: 10px;
-    padding: 12px;
-    border-radius: 12px;
     font-weight: 800;
     font-size: 14px;
-    text-align: center;
 }
 
 .feedback-banner.correct-banner {
@@ -486,6 +560,37 @@ body {
 
 .feedback-banner.hidden {
     display: none;
+}
+
+.feedback-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.btn-sub-action {
+    background: var(--bg-card);
+    border: 1px solid var(--border-neon);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-sub-action:hover {
+    background: rgba(0, 240, 255, 0.15);
+    border-color: var(--neon-cyan);
+}
+
+.btn-chart-link {
+    background: rgba(255, 215, 0, 0.15);
+    border-color: var(--neon-gold);
+    color: var(--neon-gold);
 }
 
 /* Next Control Bar */
@@ -674,7 +779,7 @@ body {
 }
 
 /* ==========================================================================
-   Modals (Cool-down & Paywall)
+   Modals (Chart, Cool-down, Paywall, Profile)
    ========================================================================== */
 .modal-overlay {
     position: fixed;
@@ -699,14 +804,84 @@ body {
     background: var(--bg-card);
     border: 2px solid var(--neon-pink);
     border-radius: 20px;
-    padding: 28px;
+    padding: 24px;
     width: 100%;
-    max-width: 400px;
+    max-width: 440px;
     text-align: center;
     box-shadow: 0 0 30px rgba(255, 0, 127, 0.4);
     display: flex;
     flex-direction: column;
     gap: 16px;
+    max-height: 85vh;
+}
+
+.chart-modal-card {
+    border-color: var(--neon-gold);
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
+}
+
+.chart-modal-header h2 {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--neon-gold);
+    margin-top: 4px;
+}
+
+.chart-table-container {
+    overflow-y: auto;
+    max-height: 50vh;
+    border: 1px solid var(--border-neon);
+    border-radius: 12px;
+    background: var(--bg-dark);
+}
+
+.chart-modal-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.chart-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    gap: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    text-align: left;
+}
+
+.chart-pos {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: var(--bg-card-alt);
+    border: 1px solid var(--neon-cyan);
+    color: var(--neon-cyan);
+    font-family: var(--font-heading);
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.chart-song-info {
+    flex: 1;
+}
+
+.chart-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.chart-artist {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.chart-row.highlight {
+    background: rgba(255, 215, 0, 0.15);
+    border-left: 3px solid var(--neon-gold);
 }
 
 .cooldown-buzzer {

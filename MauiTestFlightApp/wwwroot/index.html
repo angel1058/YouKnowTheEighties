@@ -32,7 +32,7 @@
 
         <!-- Top Arcade Header Bar -->
         <header class="game-header">
-            <div class="header-logo" onclick="showScreen('home')">
+            <div class="header-logo" onclick="showScreen('game')">
                 <span class="logo-icon">🎸</span>
                 <div>
                     <span class="logo-title">80s MUSIC QUIZ</span>
@@ -51,7 +51,7 @@
 
         <!-- Dynamic Navigation Tabs -->
         <nav class="game-nav">
-            <button class="nav-btn active" id="nav-play" onclick="showScreen('game')">🎮 Play Quiz</button>
+            <button class="nav-btn active" id="nav-game" onclick="showScreen('game')">🎮 Play Quiz</button>
             <button class="nav-btn" id="nav-levels" onclick="showScreen('levels')">🏆 Levels</button>
             <button class="nav-btn" id="nav-leaderboard" onclick="showScreen('leaderboard')">📊 High Scores</button>
             <button class="nav-btn paywall-btn" onclick="showPaywallModal('decades')">🔒 90s/00s (Paywall)</button>
@@ -86,39 +86,69 @@
 
             <!-- Quiz Stage Card -->
             <div class="quiz-stage-card">
+
+                <!-- Stage Top Controls (Category, Points, Timer, Lifelines) -->
                 <div class="stage-header">
-                    <span class="category-badge" id="question-category">LEVEL 1: TOP 2 HITS</span>
-                    <span class="points-badge" id="question-points">+1 PT</span>
+                    <div class="category-group">
+                        <span class="category-badge" id="question-category">LEVEL 1: TOP 2 HITS</span>
+                        <span class="points-badge" id="question-points">+1 PT</span>
+                    </div>
+
+                    <!-- 10-Second Bonus Countdown Timer Ring -->
+                    <div class="bonus-timer-box" id="timer-box">
+                        <span class="timer-ring-text" id="timer-text">10s</span>
+                        <span class="bonus-badge" id="bonus-points-badge">+5 BONUS</span>
+                    </div>
                 </div>
 
+                <!-- Lifelines Bar ("50/50 Gimmick") -->
+                <div class="lifelines-bar">
+                    <button class="lifeline-btn" id="btn-5050" onclick="useLifeline5050()" title="Remove 2 Wrong Answers">
+                        ⚡ 50 / 50 LIFELINE (<span id="count-5050">1</span> LEFT)
+                    </button>
+                </div>
+
+                <!-- Question Box -->
                 <div class="question-box">
                     <h2 class="question-text" id="question-text">Loading question...</h2>
                 </div>
 
                 <!-- 4 Multiple Choice Answers -->
                 <div class="answers-grid" id="answers-grid">
-                    <button class="answer-btn" onclick="submitAnswer(0)">
+                    <button class="answer-btn" id="btn-ans-0" onclick="submitAnswer(0)">
                         <span class="btn-letter">A</span>
                         <span class="btn-text" id="ans-0">Option A</span>
                     </button>
-                    <button class="answer-btn" onclick="submitAnswer(1)">
+                    <button class="answer-btn" id="btn-ans-1" onclick="submitAnswer(1)">
                         <span class="btn-letter">B</span>
                         <span class="btn-text" id="ans-1">Option B</span>
                     </button>
-                    <button class="answer-btn" onclick="submitAnswer(2)">
+                    <button class="answer-btn" id="btn-ans-2" onclick="submitAnswer(2)">
                         <span class="btn-letter">C</span>
                         <span class="btn-text" id="ans-2">Option C</span>
                     </button>
-                    <button class="answer-btn" onclick="submitAnswer(3)">
+                    <button class="answer-btn" id="btn-ans-3" onclick="submitAnswer(3)">
                         <span class="btn-letter">D</span>
                         <span class="btn-text" id="ans-3">Option D</span>
                     </button>
                 </div>
 
-                <!-- Feedback Banner -->
+                <!-- Feedback Banner & Post-Answer Action Buttons -->
                 <div id="feedback-banner" class="feedback-banner hidden">
-                    <span id="feedback-icon">🎉</span>
-                    <span id="feedback-text">CORRECT! +1 POINT</span>
+                    <div class="feedback-main">
+                        <span id="feedback-icon">🎉</span>
+                        <span id="feedback-text">CORRECT! +1 POINT</span>
+                    </div>
+
+                    <!-- Reveal Answer Button (When Wrong) & View Full Chart Link -->
+                    <div class="feedback-actions">
+                        <button id="btn-reveal-answer" class="btn-sub-action hidden" onclick="revealCorrectAnswer()">
+                            👁️ Reveal Correct Answer
+                        </button>
+                        <button id="btn-view-chart" class="btn-sub-action btn-chart-link hidden" onclick="openWeekChartModal()">
+                            📜 View Full Top 20 Chart for This Week
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -155,7 +185,7 @@
                     <div class="level-badge">LEVEL 2</div>
                     <div class="level-info">
                         <h3>What Song Was Number 1?</h3>
-                        <p>Identify the song title for Number 1 hits in specific months (+2 Pts)</p>
+                        <p>Song + Artist matching for Number 1 hits in specific months (+2 Pts)</p>
                     </div>
                     <span class="level-status" id="level-status-2">REQ: 5 PTS</span>
                 </div>
@@ -164,8 +194,8 @@
                 <div class="level-card" id="level-card-3" onclick="selectLevel(3)">
                     <div class="level-badge">LEVEL 3</div>
                     <div class="level-info">
-                        <h3>Top 10 Chart Deep-Dive</h3>
-                        <p>Questions covering all Top 10 chart positions (+3 Pts)</p>
+                        <h3>Top 10 Chart Deep-Dive &amp; Peak Stats</h3>
+                        <p>Top 10 positions, highest peaks, and weeks in chart (+3 Pts)</p>
                     </div>
                     <span class="level-status" id="level-status-3">REQ: 15 PTS</span>
                 </div>
@@ -174,8 +204,8 @@
                 <div class="level-card" id="level-card-4" onclick="selectLevel(4)">
                     <div class="level-badge">LEVEL 4</div>
                     <div class="level-info">
-                        <h3>80s Chart Showdowns</h3>
-                        <p>Who was holding off #2? Who got knocked off top spot? (+4 Pts)</p>
+                        <h3>80s Chart Showdowns &amp; Never #1</h3>
+                        <p>Who held off #2? Who got knocked off top spot? Songs that never hit #1 (+4 Pts)</p>
                     </div>
                     <span class="level-status" id="level-status-4">REQ: 30 PTS</span>
                 </div>
@@ -224,7 +254,31 @@
         </main>
 
         <!-- ===================================================================
-             MODAL 1: COOL-DOWN TIMER (PENALTY FOR 5 WRONG ANSWERS)
+             MODAL 1: FULL TOP 20 CHART VIEW
+             =================================================================== -->
+        <div id="modal-chart" class="modal-overlay hidden">
+            <div class="modal-card chart-modal-card">
+                <div class="chart-modal-header">
+                    <span class="neon-tag">UK TOP 20 OFFICIAL CHART</span>
+                    <h2 id="chart-modal-title">Week of January 6, 1980</h2>
+                </div>
+
+                <div class="chart-table-container">
+                    <div id="chart-modal-list" class="chart-modal-list">
+                        <!-- Dynamic 1-20 Chart Rows -->
+                    </div>
+                </div>
+
+                <div class="modal-actions" style="margin-top: 14px;">
+                    <button class="btn btn-secondary" onclick="closeWeekChartModal()">
+                        Close Chart View
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================================================================
+             MODAL 2: COOL-DOWN TIMER (PENALTY FOR 5 WRONG ANSWERS)
              =================================================================== -->
         <div id="modal-cooldown" class="modal-overlay hidden">
             <div class="modal-card cooldown-card">
@@ -246,7 +300,7 @@
         </div>
 
         <!-- ===================================================================
-             MODAL 2: PAYWALL / IAP MODAL
+             MODAL 3: PAYWALL / IAP MODAL
              =================================================================== -->
         <div id="modal-paywall" class="modal-overlay hidden">
             <div class="modal-card paywall-card">
@@ -273,7 +327,7 @@
         </div>
 
         <!-- ===================================================================
-             MODAL 3: EDIT PLAYER NAME
+             MODAL 4: EDIT PLAYER NAME
              =================================================================== -->
         <div id="modal-player" class="modal-overlay hidden">
             <div class="modal-card">
