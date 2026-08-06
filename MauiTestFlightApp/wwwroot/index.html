@@ -92,18 +92,24 @@
             <!-- Quiz Stage Card -->
             <div class="quiz-stage-card">
 
-                <!-- Stage Header (Category, Points, Timer Mode Toggle) -->
+                <!-- Stage Header (Category, Points, Toggles) -->
                 <div class="stage-header">
                     <div class="category-group">
                         <span class="category-badge" id="question-category">LEVEL 1: TOP 2 HITS</span>
                         <span class="points-badge" id="question-points">+1 PT</span>
                     </div>
 
-                    <!-- Timer Mode Toggle & Bonus Countdown Box -->
+                    <!-- Toggles: Timer Mode & High Risk/Reward Deep Mode -->
                     <div class="timer-mode-container">
-                        <button class="btn-timer-toggle" id="btn-timer-toggle" onclick="toggleTimerMode()">
-                            ⏱️ Timer Mode: <span id="timer-toggle-status">OFF</span>
-                        </button>
+                        <div class="toggles-row">
+                            <button class="btn-timer-toggle" id="btn-deep-toggle" onclick="toggleDeepMode()" title="Go Deeper into Top 10 for 3x Points (High Risk: 2 Strikes on Wrong Answer!)">
+                                🔥 Go Deeper: <span id="deep-toggle-status">OFF</span>
+                            </button>
+                            <button class="btn-timer-toggle" id="btn-timer-toggle" onclick="toggleTimerMode()">
+                                ⏱️ Timer Mode: <span id="timer-toggle-status">OFF</span>
+                            </button>
+                        </div>
+                        
                         <div class="bonus-timer-box hidden" id="bonus-timer-box">
                             <span class="timer-ring-text" id="timer-text">10s</span>
                             <span class="bonus-badge" id="bonus-points-badge">2x PTS</span>
@@ -171,12 +177,12 @@
         </main>
 
         <!-- ===================================================================
-             SCREEN 2: LEVEL SELECTOR & PAYWALL
+             SCREEN 2: LEVEL SELECTOR (DEV MODE: ALL UNLOCKED FOR PREVIEW)
              =================================================================== -->
         <main id="screen-levels" class="screen-view">
             <div class="section-title">
                 <h2>GAME SHOW LEVELS</h2>
-                <p>Unlock higher difficulty levels by earning points!</p>
+                <p>Click any level to test it immediately!</p>
             </div>
 
             <div class="levels-list">
@@ -187,57 +193,57 @@
                         <h3>Who Sang The Top 2 Hits?</h3>
                         <p>Questions about Number 1 &amp; Number 2 chart toppers (+1 Pt per answer)</p>
                     </div>
-                    <span class="level-status">UNLOCKED</span>
+                    <span class="level-status">SELECT LEVEL</span>
                 </div>
 
                 <!-- Level 2 -->
-                <div class="level-card" id="level-card-2" onclick="selectLevel(2)">
+                <div class="level-card unlocked" id="level-card-2" onclick="selectLevel(2)">
                     <div class="level-badge">LEVEL 2</div>
                     <div class="level-info">
                         <h3>What Song Was Number 1?</h3>
                         <p>Song matching for Number 1 hits in specific exact chart weeks (+2 Pts)</p>
                     </div>
-                    <span class="level-status" id="level-status-2">REQ: 5 PTS</span>
+                    <span class="level-status" id="level-status-2">SELECT LEVEL</span>
                 </div>
 
                 <!-- Level 3 -->
-                <div class="level-card" id="level-card-3" onclick="selectLevel(3)">
+                <div class="level-card unlocked" id="level-card-3" onclick="selectLevel(3)">
                     <div class="level-badge">LEVEL 3</div>
                     <div class="level-info">
                         <h3>Top 10 Chart Deep-Dive &amp; Peak Stats</h3>
                         <p>Top 10 positions, highest peaks, and weeks in chart (+3 Pts)</p>
                     </div>
-                    <span class="level-status" id="level-status-3">REQ: 15 PTS</span>
+                    <span class="level-status" id="level-status-3">SELECT LEVEL</span>
                 </div>
 
                 <!-- Level 4 -->
-                <div class="level-card" id="level-card-4" onclick="selectLevel(4)">
+                <div class="level-card unlocked" id="level-card-4" onclick="selectLevel(4)">
                     <div class="level-badge">LEVEL 4</div>
                     <div class="level-info">
                         <h3>80s Chart Showdowns &amp; Never #1</h3>
                         <p>Who held off #2? Who got knocked off top spot? Songs that never hit #1 (+4 Pts)</p>
                     </div>
-                    <span class="level-status" id="level-status-4">REQ: 30 PTS</span>
+                    <span class="level-status" id="level-status-4">SELECT LEVEL</span>
                 </div>
 
                 <!-- Level 5 -->
-                <div class="level-card" id="level-card-5" onclick="selectLevel(5)">
+                <div class="level-card unlocked" id="level-card-5" onclick="selectLevel(5)">
                     <div class="level-badge">LEVEL 5</div>
                     <div class="level-info">
                         <h3>Genres &amp; Lead Singer Trivia</h3>
                         <p>Identify synth-pop toppers &amp; lead singers waiting at #2 (+5 Pts)</p>
                     </div>
-                    <span class="level-status" id="level-status-5">REQ: 50 PTS</span>
+                    <span class="level-status" id="level-status-5">SELECT LEVEL</span>
                 </div>
 
                 <!-- Level 6 -->
-                <div class="level-card" id="level-card-6" onclick="selectLevel(6)">
+                <div class="level-card unlocked" id="level-card-6" onclick="selectLevel(6)">
                     <div class="level-badge">LEVEL 6</div>
                     <div class="level-info">
                         <h3>Band Lineups &amp; Member Departures</h3>
                         <p>Who was in which band on exact dates? Who left in 1983? (+6 Pts)</p>
                     </div>
-                    <span class="level-status" id="level-status-6">REQ: 75 PTS</span>
+                    <span class="level-status" id="level-status-6">SELECT LEVEL</span>
                 </div>
 
                 <!-- Level 7 (Paywall) -->
@@ -357,6 +363,7 @@
                     <div class="feature-item">✔ 1990 - 1999 UK Top 20 Charts Pack</div>
                     <div class="feature-item">✔ 2000 - 2009 UK Top 20 Charts Pack</div>
                     <div class="feature-item">✔ Full Top 6-20 Weekly Chart Archives</div>
+                    <div class="feature-item">✔ High Risk / High Reward Deep Top 10 Mode</div>
                     <div class="feature-item">✔ Level 7 Lyrics &amp; Album Trivia</div>
                     <div class="feature-item">✔ Ad-Free &amp; Unlimited Lives</div>
                 </div>
@@ -370,7 +377,7 @@
                     </button>
                 </div>
             </div>
-        </main>
+        </div>
 
         <!-- ===================================================================
              MODAL 4: EDIT PLAYER NAME

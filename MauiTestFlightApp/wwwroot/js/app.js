@@ -1,5 +1,5 @@
 // ============================================================================
-// SO YOU THINK YOU KNOW 80s MUSIC! - GAME ENGINE V4 (LEVELS 1-6 ENRICHED)
+// SO YOU THINK YOU KNOW 80s MUSIC! - GAME ENGINE V5 (DEV LEVEL PICKER & DEEP MODE)
 // ============================================================================
 
 let songsMap = {};          // id -> { id, t: title, a: artist, g: genres, ls: leadSinger, mb: members, highestPos... }
@@ -22,11 +22,12 @@ let state = {
     avatar: '🕹️',
     score: 0,
     currentLevel: 1,
-    unlockedLevel: 1,
+    unlockedLevel: 6, // Unlocked all levels for testing/preview!
     strikes: 0,
     lifelines5050: 3,
     cooldownEndTime: 0,
     timerModeEnabled: false,
+    deepModeEnabled: false, // High Risk / High Reward 3x Points Mode
     tonedDownTheme: false
 };
 
@@ -148,7 +149,7 @@ function getOrdinalSuffix(d) {
 }
 
 // ----------------------------------------------------------------------------
-// 2. QUESTION GENERATION ENGINE (LEVELS 1 - 6)
+// 2. QUESTION GENERATION ENGINE (LEVELS 1 - 6 + DEEP MODE)
 // ----------------------------------------------------------------------------
 function generateNextQuestion() {
     if (chartWeeks.length === 0) return;
@@ -206,13 +207,15 @@ function generateNextQuestion() {
     }
 }
 
-// Level 1: "Who sang..." (Top 2 Hits)
+// Level 1: "Who sang..." (Top 2 Hits OR Deep Positions if Deep Mode ON)
 function generateLevel1Question(week, weekIndex) {
-    const pos = Math.floor(Math.random() * 2);
+    // If Deep Mode enabled: pick positions #3 through #10!
+    const pos = state.deepModeEnabled ? Math.floor(Math.random() * 8) + 2 : Math.floor(Math.random() * 2);
     const songId = week.positions[pos];
     const targetSong = songsMap[songId];
 
-    const questionText = `Who sang "${targetSong.t}" when it hit the Top 2 on ${week.exactDateFormatted}?`;
+    const positionLabel = state.deepModeEnabled ? `at Number ${pos + 1}` : `in the Top 2`;
+    const questionText = `Who sang "${targetSong.t}" when it reached ${positionLabel} on ${week.exactDateFormatted}?`;
     const correctAnswer = targetSong.a;
 
     const distractors = getSmartArtistDistractors(targetSong.a, week, pos);
@@ -222,29 +225,30 @@ function generateLevel1Question(week, weekIndex) {
         level: 1,
         basePoints: 1,
         artistNamed: false,
-        category: 'LEVEL 1: TOP 2 HITS',
+        category: state.deepModeEnabled ? `LEVEL 1: DEEP CHARTS (NUMBER ${pos + 1})` : 'LEVEL 1: TOP 2 HITS',
         text: questionText,
         options: options.shuffled,
         correctIndex: options.correctIndex
     };
 }
 
-// Level 2: "Which song did [Artist] get to Number 1 with...?"
+// Level 2: "Which song did [Artist] get to Number 1 / Top 10 with...?"
 function generateLevel2Question(week, weekIndex) {
-    const num1Song = songsMap[week.positions[0]];
-    const num2Song = songsMap[week.positions[1]];
+    const pos = state.deepModeEnabled ? Math.floor(Math.random() * 8) + 2 : 0;
+    const targetSong = songsMap[week.positions[pos]];
 
     let questionText = '';
     let correctAnswer = '';
     let artistNamed = true;
     const distractors = new Set();
 
-    if (Math.random() > 0.5 && num1Song && num2Song) {
-        questionText = `Which song did ${num1Song.a} get to Number 1 with on ${week.exactDateFormatted}?`;
-        correctAnswer = num1Song.t;
+    if (Math.random() > 0.5 && targetSong) {
+        const rankText = (pos === 0) ? "Number 1" : `Number ${pos + 1}`;
+        questionText = `Which song did ${targetSong.a} reach ${rankText} with on ${week.exactDateFormatted}?`;
+        correctAnswer = targetSong.t;
         artistNamed = true;
 
-        const artistKey = num1Song.a.trim().toUpperCase();
+        const artistKey = targetSong.a.trim().toUpperCase();
         const sameArtistSongs = artistSongsMap[artistKey] || [];
         sameArtistSongs.forEach(s => {
             if (s.t !== correctAnswer) distractors.add(s.t);
@@ -254,6 +258,7 @@ function generateLevel2Question(week, weekIndex) {
             if (week.positions[p]) distractors.add(songsMap[week.positions[p]].t);
         });
     } else {
+        const num2Song = songsMap[week.positions[1]];
         questionText = `Which song was held off top spot at Number 2 on ${week.exactDateFormatted}?`;
         correctAnswer = `"${num2Song.t}" - ${num2Song.a}`;
         artistNamed = false;
@@ -272,7 +277,7 @@ function generateLevel2Question(week, weekIndex) {
         level: 2,
         basePoints: 2,
         artistNamed: artistNamed,
-        category: 'LEVEL 2: NUMBER 1 HITS',
+        category: 'LEVEL 2: CHART TOPPERS',
         text: questionText,
         options: options.shuffled,
         correctIndex: options.correctIndex
@@ -419,7 +424,7 @@ function generateLevel4Question(week, weekIndex) {
     };
 }
 
-// Level 5: Genre-Based Questions ("Which Synth-pop track peaked at #1 on Date?")
+// Level 5: Genre-Based Questions
 function generateGenreQuestion(week) {
     const num1Song = songsMap[week.positions[0]];
     const genre = (num1Song.g && num1Song.g.length > 0) ? num1Song.g[0] : 'Synth-pop';
@@ -427,7 +432,6 @@ function generateGenreQuestion(week) {
     const questionText = `Which ${genre} track peaked at Number 1 on ${week.exactDateFormatted}?`;
     const correctAnswer = `"${num1Song.t}" - ${num1Song.a}`;
 
-    // Find 3 other tracks of the exact same genre
     const sameGenreSongs = Object.values(songsMap).filter(s => s.g && s.g.includes(genre) && s.id !== num1Song.id);
     const distractors = new Set();
 
@@ -449,7 +453,7 @@ function generateGenreQuestion(week) {
     };
 }
 
-// Level 5: Lead Singer Showdown ("Who was the lead singer in the group at Number 2?")
+// Level 5: Lead Singer Showdown
 function generateLeadSingerAtNumber2Question(week) {
     const num1Song = songsMap[week.positions[0]];
     const num2Song = songsMap[week.positions[1]];
@@ -458,7 +462,6 @@ function generateLeadSingerAtNumber2Question(week) {
     const questionText = `Whilst ${num1Song.a} looked down on everyone else at #1 on ${week.exactDateFormatted}, who was the lead singer in the group waiting at Number 2?`;
     const correctAnswer = leadSinger;
 
-    // Collect famous lead singer names as distractors
     const famousSingers = ["Simon Le Bon", "Ian McCulloch", "Benny Andersson", "Martin Fry", 
                            "Dave Gahan", "Boy George", "Tony Hadley", "Midge Ure", 
                            "Philip Oakey", "Marc Almond", "Holly Johnson", "Jim Kerr"];
@@ -477,9 +480,8 @@ function generateLeadSingerAtNumber2Question(week) {
     };
 }
 
-// Level 6: Band Lineups & Member Departures ("Which band was X a member of in Month Year?")
+// Level 6: Band Lineups
 function generateBandMemberLineupQuestion(week) {
-    // Find a band in this week with detailed member lineups
     const bandSongsInWeek = week.positions.map(id => songsMap[id]).filter(s => s.mb && s.mb.length > 0);
     
     if (bandSongsInWeek.length === 0) return generateLeadSingerAtNumber2Question(week);
@@ -512,7 +514,7 @@ function generateBandMemberLineupQuestion(week) {
     };
 }
 
-// Level 6 Departure Question ("Who left X in Year?")
+// Level 6 Departure Question
 function generateMemberDepartureQuestion() {
     const departures = [
         { band: "Depeche Mode", year: 1981, leaver: "Vince Clarke" },
@@ -593,36 +595,38 @@ function assembleFourOptions(correct, distractorsList) {
 }
 
 // ----------------------------------------------------------------------------
-// 3. TIMER MODE TOGGLE & BONUS TIMER
+// 3. TOGGLES: TIMER MODE & DEEP MODE (HIGH RISK 3x PTS)
 // ----------------------------------------------------------------------------
 function toggleTimerMode() {
     state.timerModeEnabled = !state.timerModeEnabled;
     saveLocalState();
-
-    const statusEl = document.getElementById('timer-toggle-status');
-    const btnToggle = document.getElementById('btn-timer-toggle');
-    const bonusBox = document.getElementById('bonus-timer-box');
+    updateUserUI();
 
     if (state.timerModeEnabled) {
-        statusEl.textContent = 'ON (2x Pts)';
-        btnToggle.classList.add('active');
-        bonusBox.classList.remove('hidden');
         startBonusTimer();
     } else {
-        statusEl.textContent = 'OFF';
-        btnToggle.classList.remove('active');
-        bonusBox.classList.add('hidden');
         stopBonusTimer();
     }
+}
 
-    updateQuestionPointsDisplay();
+function toggleDeepMode() {
+    state.deepModeEnabled = !state.deepModeEnabled;
+    saveLocalState();
+    updateUserUI();
+    generateNextQuestion();
 }
 
 function updateQuestionPointsDisplay() {
     if (!currentQuestion) return;
-    const multiplier = state.timerModeEnabled ? 2 : 1;
+    const multiplier = (state.timerModeEnabled ? 2 : 1) * (state.deepModeEnabled ? 3 : 1);
     const finalPts = currentQuestion.basePoints * multiplier;
-    document.getElementById('question-points').textContent = `+${finalPts} PT${finalPts > 1 ? 'S' : ''}${state.timerModeEnabled ? ' (2x TIMER)' : ''}`;
+    
+    let tag = '';
+    if (state.deepModeEnabled && state.timerModeEnabled) tag = ' (6x DEEP TIMER)';
+    else if (state.deepModeEnabled) tag = ' (3x DEEP)';
+    else if (state.timerModeEnabled) tag = ' (2x TIMER)';
+
+    document.getElementById('question-points').textContent = `+${finalPts} PT${finalPts > 1 ? 'S' : ''}${tag}`;
 }
 
 function startBonusTimer() {
@@ -714,7 +718,7 @@ function submitAnswer(selectedIndex) {
         btn.disabled = true;
     }
 
-    const multiplier = state.timerModeEnabled ? 2 : 1;
+    const multiplier = (state.timerModeEnabled ? 2 : 1) * (state.deepModeEnabled ? 3 : 1);
     const basePtsEarned = currentQuestion.basePoints * multiplier;
 
     if (isCorrect) {
@@ -733,13 +737,15 @@ function submitAnswer(selectedIndex) {
 
         checkLevelUnlocks();
     } else {
-        state.strikes++;
+        // High Risk Deep Mode penalty: 2 strikes instead of 1!
+        const strikeCountAdd = state.deepModeEnabled ? 2 : 1;
+        state.strikes += strikeCountAdd;
 
         document.getElementById(`btn-ans-${selectedIndex}`).classList.add('wrong');
 
         feedbackBanner.className = 'feedback-banner wrong-banner';
         feedbackIcon.textContent = '❌';
-        feedbackText.textContent = `NOT QUITE RIGHT! Strike ${state.strikes} of 5.`;
+        feedbackText.textContent = `NOT QUITE RIGHT! ${state.deepModeEnabled ? 'HIGH RISK PENALTY (+2 STRIKES)!' : `Strike ${state.strikes} of 5.`}`;
 
         btnReveal.classList.remove('hidden');
         btnChart.classList.add('hidden');
@@ -814,7 +820,7 @@ function closeWeekChartModal() {
 }
 
 // ----------------------------------------------------------------------------
-// 7. VISUAL THEME & LEVEL UNLOCKS
+// 7. VISUAL THEME & DEV LEVEL SELECTION (ANY LEVEL SELECTABLE)
 // ----------------------------------------------------------------------------
 function toggleVisualTheme() {
     state.tonedDownTheme = !state.tonedDownTheme;
@@ -836,22 +842,12 @@ function applyTheme() {
 }
 
 function checkLevelUnlocks() {
-    let newlyUnlocked = state.unlockedLevel;
-
-    if (state.score >= 75) newlyUnlocked = 6;
-    else if (state.score >= 50) newlyUnlocked = 5;
-    else if (state.score >= 30) newlyUnlocked = 4;
-    else if (state.score >= 15) newlyUnlocked = 3;
-    else if (state.score >= 5) newlyUnlocked = 2;
-
-    if (newlyUnlocked > state.unlockedLevel) {
-        state.unlockedLevel = newlyUnlocked;
-        state.currentLevel = newlyUnlocked;
-    }
+    // Unlocked all levels for testing/preview!
+    state.unlockedLevel = 6;
 }
 
+// DEV LEVEL PICKER: Allows selecting ANY level (1 to 6) immediately!
 function selectLevel(lvl) {
-    if (lvl > state.unlockedLevel) return;
     state.currentLevel = lvl;
     saveLocalState();
     updateUserUI();
@@ -943,6 +939,7 @@ function updateUserUI() {
     document.getElementById('level-display').textContent = `Lvl ${state.currentLevel}`;
     document.getElementById('count-5050').textContent = state.lifelines5050;
 
+    // Update Timer Toggle UI
     const timerStatus = document.getElementById('timer-toggle-status');
     const btnTimerToggle = document.getElementById('btn-timer-toggle');
     const bonusBox = document.getElementById('bonus-timer-box');
@@ -957,6 +954,18 @@ function updateUserUI() {
         if (bonusBox) bonusBox.classList.add('hidden');
     }
 
+    // Update Deep Mode Toggle UI
+    const deepStatus = document.getElementById('deep-toggle-status');
+    const btnDeepToggle = document.getElementById('btn-deep-toggle');
+
+    if (state.deepModeEnabled) {
+        if (deepStatus) deepStatus.textContent = 'ON (3x Pts)';
+        if (btnDeepToggle) btnDeepToggle.classList.add('deep-active');
+    } else {
+        if (deepStatus) deepStatus.textContent = 'OFF';
+        if (btnDeepToggle) btnDeepToggle.classList.remove('deep-active');
+    }
+
     const dots = document.querySelectorAll('.strike-dot');
     dots.forEach((dot, idx) => {
         if (idx < state.strikes) dot.classList.add('filled');
@@ -967,21 +976,14 @@ function updateUserUI() {
 }
 
 function updateLevelCardsUI() {
-    for (let l = 2; l <= 6; l++) {
+    for (let l = 1; l <= 6; l++) {
         const card = document.getElementById(`level-card-${l}`);
         const status = document.getElementById(`level-status-${l}`);
         if (!card || !status) continue;
 
-        if (l <= state.unlockedLevel) {
-            card.classList.add('unlocked');
-            status.textContent = (l === state.currentLevel) ? 'ACTIVE' : 'UNLOCKED';
-            status.style.color = '#00F0FF';
-        } else {
-            card.classList.remove('unlocked');
-            const req = (l === 2) ? 5 : (l === 3) ? 15 : (l === 4) ? 30 : (l === 5) ? 50 : 75;
-            status.textContent = `REQ: ${req} PTS`;
-            status.style.color = '#A0A0C0';
-        }
+        card.classList.add('unlocked');
+        status.textContent = (l === state.currentLevel) ? 'ACTIVE LEVEL' : 'SELECT LEVEL';
+        status.style.color = (l === state.currentLevel) ? '#38BDF8' : '#00F0FF';
     }
 }
 
@@ -998,11 +1000,11 @@ function getLevelName(lvl) {
 }
 
 function saveLocalState() {
-    localStorage.setItem('80s_quiz_state_v4', JSON.stringify(state));
+    localStorage.setItem('80s_quiz_state_v5', JSON.stringify(state));
 }
 
 function loadLocalState() {
-    const saved = localStorage.getItem('80s_quiz_state_v4');
+    const saved = localStorage.getItem('80s_quiz_state_v5');
     if (saved) {
         try {
             state = { ...state, ...JSON.parse(saved) };
