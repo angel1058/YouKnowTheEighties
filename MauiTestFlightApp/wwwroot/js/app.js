@@ -1,11 +1,16 @@
 // ============================================================================
-// SO YOU THINK YOU KNOW 80s MUSIC! - GAME ENGINE V8 (CATALOGUE & LYRIC SYSTEM)
+// SO YOU THINK YOU KNOW 80s MUSIC! - GAME ENGINE V9 (DYNAMIC DISTRACTOR SAMPLER)
 // ============================================================================
 
 let songsMap = {};          // id -> { id, t: title, cleanT, a: artist, g, ls, mb, ly, highestPos... }
 let artistSongsMap = {};    // artistName -> array of song objects
 let chartWeeks = [];        // array of { dateKey, year, exactDateFormatted, positions: [songId...] }
 let templateCatalogue = {}; // logic_id -> { cat_id, name, templates: [...] }
+
+// Global Pools for Dynamic Distractors
+let allLeadSingers = new Set();
+let allBandMembers = new Set();
+let allBandNames = new Set();
 
 let currentQuestion = null;
 let currentWeek = null;
@@ -28,7 +33,7 @@ let state = {
     avatar: '🕹️',
     score: 0,
     currentLevel: 1,
-    unlockedLevel: 7, // Dev mode: unlocked all levels including Level 7 Lyric Pack
+    unlockedLevel: 7, // Dev mode: unlocked all levels
     strikes: 0,
     lifelines5050: 3,
     cooldownEndTime: 0,
@@ -65,7 +70,7 @@ function formatTemplate(tpl, replacements) {
 }
 
 // ----------------------------------------------------------------------------
-// 1. DATA PARSING & CATALOGUE LOADING
+// 1. DATA PARSING & GLOBAL DISTRACTOR POOLING
 // ----------------------------------------------------------------------------
 async function loadChartData() {
     const progressEl = document.getElementById('splash-progress');
@@ -106,6 +111,20 @@ async function loadChartData() {
             const artistKey = song.a.trim().toUpperCase();
             if (!artistSongsMap[artistKey]) artistSongsMap[artistKey] = [];
             artistSongsMap[artistKey].push(songsMap[song.id]);
+
+            // Populate Global Distractor Pools
+            if (song.ls && song.ls !== song.a) {
+                allLeadSingers.add(song.ls.trim());
+            } else if (song.a) {
+                allLeadSingers.add(song.a.trim());
+            }
+
+            if (song.mb && song.mb.length > 0) {
+                allBandNames.add(song.a.trim());
+                song.mb.forEach(m => {
+                    if (m.name) allBandMembers.add(m.name.trim());
+                });
+            }
         });
 
         // Parse & Compute Exact Dates (1980 - 1989)
@@ -137,7 +156,7 @@ async function loadChartData() {
         });
 
         if (progressEl) progressEl.style.width = '100%';
-        if (statusEl) statusEl.textContent = `Loaded ${chartWeeks.length} chart weeks & ${Object.keys(templateCatalogue).length} logic categories!`;
+        if (statusEl) statusEl.textContent = `Loaded ${chartWeeks.length} chart weeks & ${allBandMembers.size} band members!`;
 
         setTimeout(() => {
             document.getElementById('splash-screen').classList.add('hidden');
@@ -185,6 +204,27 @@ function getOrdinalSuffix(d) {
         case 3:  return "rd";
         default: return "th";
     }
+}
+
+// ----------------------------------------------------------------------------
+// DYNAMIC DISTRACTOR SAMPLERS
+// ----------------------------------------------------------------------------
+function getDynamicLeadSingerDistractors(correctAnswer) {
+    const pool = Array.from(allLeadSingers).filter(s => s !== correctAnswer);
+    pool.sort(() => Math.random() - 0.5);
+    return pool.slice(0, 3);
+}
+
+function getDynamicBandMemberDistractors(correctAnswer) {
+    const pool = Array.from(allBandMembers).filter(m => m !== correctAnswer);
+    pool.sort(() => Math.random() - 0.5);
+    return pool.slice(0, 3);
+}
+
+function getDynamicBandNameDistractors(correctAnswer) {
+    const pool = Array.from(allBandNames).filter(b => b !== correctAnswer);
+    pool.sort(() => Math.random() - 0.5);
+    return pool.slice(0, 3);
 }
 
 // ----------------------------------------------------------------------------
@@ -265,7 +305,6 @@ function buildCandidateQuestion() {
         if (typeRoll > 0.5) return generateBandMemberLineupQuestion(currentWeek);
         else return generateMemberDepartureQuestion();
     } else {
-        // Level 7+: First Line Lyric Challenge & Premium Expert Questions!
         if (typeRoll > 0.4) return generateFirstLineLyricQuestion();
         else return generateBandMemberLineupQuestion(currentWeek);
     }
@@ -527,7 +566,7 @@ function generateLevel4Question(week, weekIndex) {
 }
 
 // ----------------------------------------------------------------------------
-// CATEGORY 5 & 7: GENRES & LEAD SINGERS
+// CATEGORY 5 & 7: GENRES & LEAD SINGERS (DYNAMIC DISTRACTORS)
 // ----------------------------------------------------------------------------
 function generateGenreQuestion(week) {
     const num1Song = songsMap[week.positions[0]];
@@ -569,12 +608,8 @@ function generateLeadSingerAtNumber2Question(week) {
     });
 
     const correctAnswer = leadSinger;
-
-    const famousSingers = ["Simon Le Bon", "Ian McCulloch", "Benny Andersson", "Martin Fry", 
-                           "Dave Gahan", "Boy George", "Tony Hadley", "Midge Ure", 
-                           "Philip Oakey", "Marc Almond", "Holly Johnson", "Jim Kerr"];
-
-    const distractors = famousSingers.filter(s => s !== correctAnswer);
+    // DYNAMIC SAMPLING: Pick 3 random lead singers from dataset!
+    const distractors = getDynamicLeadSingerDistractors(correctAnswer);
     const options = assembleFourOptions(correctAnswer, distractors);
 
     return {
@@ -589,7 +624,7 @@ function generateLeadSingerAtNumber2Question(week) {
 }
 
 // ----------------------------------------------------------------------------
-// CATEGORY 7, 8 & 13: BAND LINEUPS, DEPARTURES & INSTRUMENTS
+// CATEGORY 7, 8 & 13: BAND LINEUPS, DEPARTURES & DYNAMIC DISTRACTORS
 // ----------------------------------------------------------------------------
 function generateBandMemberLineupQuestion(week) {
     const bandSongsInWeek = week.positions.map(id => songsMap[id]).filter(s => {
@@ -609,16 +644,9 @@ function generateBandMemberLineupQuestion(week) {
     });
 
     const correctAnswer = correctBand;
-
-    const distractors = new Set();
-    const berühmteBands = ["Depeche Mode", "Duran Duran", "The Police", "Spandau Ballet", 
-                           "Tears for Fears", "Human League", "Ultravox", "Madness", "The Clash", "Culture Club", "Wham!", "Fleetwood Mac"];
-
-    berühmteBands.forEach(b => {
-        if (b !== correctBand) distractors.add(b);
-    });
-
-    const options = assembleFourOptions(correctAnswer, Array.from(distractors));
+    // DYNAMIC SAMPLING: Pick 3 random band names from dataset!
+    const distractors = getDynamicBandNameDistractors(correctBand);
+    const options = assembleFourOptions(correctAnswer, distractors);
 
     return {
         level: 6,
@@ -653,10 +681,8 @@ function generateMemberDepartureQuestion() {
     });
 
     const correctAnswer = dep.leaver;
-
-    const famousSingers = ["Vince Clarke", "Limahl", "Nick Heyward", "Terry Hall", "Marc Almond", "Mick Jones", "George Michael", "Ian McCulloch", "Stevie Nicks", "Alison Moyet"];
-    const distractors = famousSingers.filter(s => s !== correctAnswer);
-
+    // DYNAMIC SAMPLING: Pick 3 random band member names from dataset!
+    const distractors = getDynamicBandMemberDistractors(correctAnswer);
     const options = assembleFourOptions(correctAnswer, distractors);
 
     return {
@@ -1158,11 +1184,11 @@ function getLevelName(lvl) {
 }
 
 function saveLocalState() {
-    localStorage.setItem('80s_quiz_state_v8', JSON.stringify(state));
+    localStorage.setItem('80s_quiz_state_v9', JSON.stringify(state));
 }
 
 function loadLocalState() {
-    const saved = localStorage.getItem('80s_quiz_state_v8');
+    const saved = localStorage.getItem('80s_quiz_state_v9');
     if (saved) {
         try {
             state = { ...state, ...JSON.parse(saved) };
